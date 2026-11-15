@@ -60,7 +60,14 @@ pub(super) fn fields(
     Ok(result)
 }
 
-fn expands(plan: &TypeGraph, id: Id, exposure: Exposure, explicit: bool, inherited: bool) -> bool {
+/// Request traversal and emitted paths must agree on which inline children expand.
+pub(super) fn expands(
+    plan: &TypeGraph,
+    id: Id,
+    exposure: Exposure,
+    explicit: bool,
+    inherited: bool,
+) -> bool {
     matches!(plan.nodes[id].kind, Kind::Record(_) | Kind::Array { .. })
         && (exposure == Exposure::Flatten || (inherited && !explicit))
 }
@@ -82,6 +89,7 @@ fn expand(
     result: &mut Flattened,
 ) -> Result<(), GenerateError> {
     let node = &plan.nodes[field.ty];
+    let generation = intersect(generation, node.options.generation);
     result.contexts.insert(&path.context, &field.docs);
     result.contexts.insert(
         &format!("{} ({})", path.context, node.source_name),
@@ -91,7 +99,9 @@ fn expand(
         Kind::Record(fields) => {
             for child in fields {
                 let mut inherited = child.clone();
+                inherited.options.inherit_flattened_requests(&field.options);
                 inherited.options.inherit_helpers(&field.options);
+                inherited.options.inherit_helpers(&node.options);
                 let child = &inherited;
                 let segment = child.explicit_name.as_ref().unwrap_or(&child.source_name);
                 let path = Path {
@@ -121,11 +131,16 @@ fn expand(
             }
         }
         Kind::Array { element, length } => {
+            // An array's request connects its use to the element use. Keep that
+            // edge while moving each element onto the outer containing view.
+            let mut element_options = node.options.clone();
+            element_options.inherit_flattened_requests(&field.options);
             let node = &plan.nodes[*element];
             let generation = intersect(generation, node.options.generation);
             let mut child = field.clone();
             child.ty = *element;
             child.options = node.options.clone();
+            child.options.requests.clone_from(&element_options.requests);
             child.options.inherit_helpers(&field.options);
             // The array's description belongs to the group, not to each element.
             child.docs.clear();
@@ -145,9 +160,12 @@ fn expand(
                 ) {
                     expand(plan, &child, &path, offset, generation, result)?;
                 } else {
+                    let mut element = child.clone();
+                    element.options.requests.clone_from(&node.options.requests);
+                    element.options.inherit_flattened_requests(&element_options);
                     result
                         .fields
-                        .push(leaf(plan, &child, &path, offset, generation)?);
+                        .push(leaf(plan, &element, &path, offset, generation)?);
                 }
             }
         }
@@ -182,6 +200,7 @@ fn leaf(
     ))?;
     field.offset = offset;
     field.options.generation = generation;
+    field.options.limit_requests(generation);
     Ok(field)
 }
 

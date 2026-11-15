@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use clang::{Entity, EntityKind};
-use intrlay_schema::{Exposure, Language, Scalar, TargetOptions};
+use intrlay_schema::{Exposure, Language, Scalar, TargetOptions, ViewOptions};
 
 use crate::FrontendError;
 
@@ -60,7 +60,9 @@ impl Annotation {
                     .map_or((option, "true"), |(key, value)| {
                         (key.trim(), value.trim().trim_matches('"'))
                     });
-                let (language, key) = if let Some((language, key)) = key.split_once('.') {
+                let (language, key) = if key.starts_with("view.") {
+                    (None, key)
+                } else if let Some((language, key)) = key.split_once('.') {
                     (Some(parse_language(language)?), key)
                 } else {
                     (None, key)
@@ -120,6 +122,13 @@ impl Annotation {
                 target.generate_value_accessors = target
                     .generate_value_accessors
                     .or(common.generate_value_accessors);
+                if let Some(defaults) = &common.view {
+                    let mut view = defaults.clone();
+                    if let Some(overrides) = &target.view {
+                        view.override_with(overrides);
+                    }
+                    target.view = Some(view);
+                }
             }
             target.create = target.create.or(common.create);
         }
@@ -180,6 +189,9 @@ fn parse_language(value: &str) -> Result<Language, FrontendError> {
 }
 
 fn parse_option(target: &mut TargetOptions, key: &str, value: &str) -> Result<(), FrontendError> {
+    if let Some(key) = key.strip_prefix("view.") {
+        return parse_view(target.view.get_or_insert_default(), key, value);
+    }
     match key {
         "name" => target.name = Some(value.into()),
         "generate_getters" => target.generate_getters = Some(boolean(value)?),
@@ -195,6 +207,22 @@ fn parse_option(target: &mut TargetOptions, key: &str, value: &str) -> Result<()
         "project" => target.exposure = Some(projection(value)?),
         _ => return Err(FrontendError(format!("unknown Intrlay annotation: {key}"))),
     }
+    Ok(())
+}
+
+fn parse_view(view: &mut ViewOptions, key: &str, value: &str) -> Result<(), FrontendError> {
+    if let Some(key) = key.strip_prefix("elements.") {
+        return parse_view(view.elements.get_or_insert_default(), key, value);
+    }
+    let destination = match key {
+        "generate_getters" => &mut view.generate_getters,
+        "generate_setters" => &mut view.generate_setters,
+        "generate_component_accessors" => &mut view.generate_component_accessors,
+        "generate_byte_range_accessors" => &mut view.generate_byte_range_accessors,
+        "generate_value_accessors" => &mut view.generate_value_accessors,
+        _ => return Err(FrontendError(format!("unknown view option: {key}"))),
+    };
+    *destination = Some(boolean(value)?);
     Ok(())
 }
 
@@ -235,14 +263,16 @@ fn check_scope(
     key: &str,
     language: Option<Language>,
 ) -> Result<(), FrontendError> {
-    if matches!(
-        key,
-        "generate_getters"
-            | "generate_setters"
-            | "generate_component_accessors"
-            | "generate_byte_range_accessors"
-            | "generate_value_accessors"
-    ) && language.is_some_and(|language| !language.supports_accessor_generation())
+    if (key.starts_with("view.")
+        || matches!(
+            key,
+            "generate_getters"
+                | "generate_setters"
+                | "generate_component_accessors"
+                | "generate_byte_range_accessors"
+                | "generate_value_accessors"
+        ))
+        && language.is_some_and(|language| !language.supports_accessor_generation())
     {
         return Err(FrontendError(
             "accessor generation options apply only to typescript, python, and dart".into(),
@@ -258,10 +288,11 @@ fn check_scope(
         EntityKind::TypeAliasDecl | EntityKind::TypedefDecl => key == "name" && language.is_none(),
         EntityKind::FieldDecl => !matches!(key, "align" | "transparent" | "create"),
         EntityKind::EnumConstantDecl => {
-            matches!(
-                key,
-                "name" | "generate_getters" | "generate_setters" | "generate_value_accessors"
-            )
+            key.starts_with("view.")
+                || matches!(
+                    key,
+                    "name" | "generate_getters" | "generate_setters" | "generate_value_accessors"
+                )
         }
         EntityKind::EnumDecl => key != "transparent",
         _ => true,
@@ -388,6 +419,33 @@ mod tests {
     }
 
     #[test]
+    fn view_options_merge_languages_and_preserve_element_scopes() -> Result<(), FrontendError> {
+        let annotation = Annotation::parse_text([
+            "intrlay:view.generate_setters=false,typescript.view.generate_setters=true,view.elements.generate_byte_range_accessors=true,python.view.elements.generate_byte_range_accessors=false",
+        ].into_iter(), EntityKind::FieldDecl)?;
+        for language in LANGUAGES {
+            if !language.supports_accessor_generation() {
+                assert!(!annotation.targets.contains_key(&language));
+                continue;
+            }
+            let Some(view) = annotation.targets[&language].view.as_ref() else {
+                panic!("view options expected");
+            };
+            assert_eq!(
+                view.generate_setters,
+                Some(language == Language::TypeScript)
+            );
+            assert_eq!(
+                view.elements
+                    .as_ref()
+                    .and_then(|elements| elements.generate_byte_range_accessors),
+                Some(language != Language::Python)
+            );
+        }
+        Ok(())
+    }
+
+    #[test]
     fn common_projection_preserves_value_type_targets() -> Result<(), FrontendError> {
         for (value, exposure) in [
             ("fields", Exposure::Fields),
@@ -441,6 +499,10 @@ mod tests {
             "intrlay:rust.generate_getters=false",
             "intrlay:cpp.generate_setters=false",
             "intrlay:csharp.generate_setters=false",
+            "intrlay:cpp.view.generate_setters=false",
+            "intrlay:view.create=false",
+            "intrlay:view.elements.project=f32",
+            "intrlay:view.generate_getters=false,view.generate_getters=true",
         ] {
             assert!(
                 Annotation::parse_text([text].into_iter(), EntityKind::StructDecl).is_err(),

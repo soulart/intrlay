@@ -7,6 +7,50 @@ import { NumericItemsView } from "../../target/compositions/bindings.js";
 import { EncodingBuffer } from "../../packages/typescript/dist/index.js";
 import { RenamedListView, ProjectionSetView, WrappedScalarsView, CachedChildrenView, OptionalRootView, CachedRootView } from "../../target/compositions/bindings.js";
 import { ContainersView, TupleRootView, TupleTreeView } from "../../target/compositions/bindings.js";
+import { NumericOwnersView } from "../../target/compositions/bindings.js";
+
+const numericOwnerBytes = new Uint8Array(readFileSync("target/compositions/numeric-owners.bin"));
+const numericOwnerInput = {
+    boxed: [11, 12], vector: [21, 22], rc: [31, 32], arc: [41, 42],
+    optional: [51, 52], empty: [], absent: null, nested: [[61, 62], []],
+    fixedSlices: [[71, 72], []], fixed: [81, 82], matrix: [[1, 2], [3, 4]],
+    tuple: ["tuple", [91, 92], 93], flattened: [101, [102, 103]],
+    optionalItems: [111, null], structural: [121, 122], rcText: "rc", arcText: "arc", rcVector: [131, 132],
+};
+assert.deepEqual(NumericOwnersView.create(numericOwnerInput).storage.bytes, numericOwnerBytes);
+const numericOwnerBacking = new Uint8Array(numericOwnerBytes.length + 32).fill(0xa5);
+const owners = NumericOwnersView.createInPlace(numericOwnerBacking.subarray(16), numericOwnerInput);
+for (const [name, first] of [["boxed", 11], ["vector", 21], ["rc", 31], ["arc", 41]]) {
+    const values = owners[name];
+    assert.ok(values instanceof Uint32Array);
+    assert.equal(values, owners[name]);
+    assert.equal(values[0], first);
+    assert.equal(owners[`${name}ByteOffset`], values.byteOffset - owners.storage.bytes.byteOffset);
+    assert.equal(owners[`${name}ByteLength`], values.byteLength);
+    values[0] += 1;
+    assert.equal(owners.storage.u32[owners[`${name}ByteOffset`] >>> 2], first + 1);
+}
+assert.ok(owners.empty instanceof Uint32Array && owners.empty.length === 0);
+assert.equal(owners.emptyByteLength, 0);
+assert.equal(owners.optional[1], 52);
+assert.equal(owners.absent, null);
+assert.equal(owners.nested.get(0)[1], 62);
+assert.equal(owners.nested.get(1).length, 0);
+assert.equal(owners.fixedSlices.get(0)[1], 72);
+assert.equal(owners.fixed[1], 82);
+assert.equal(owners.matrix.length, 2);
+assert.deepEqual([...owners.matrix.get(1)], [3, 4]);
+assert.equal(owners.tuple.field0, "tuple");
+assert.equal(owners.tuple.field1[1], 92);
+assert.equal(owners.flattenedField11, 103);
+assert.equal(owners.optionalItems.get(0), 111);
+assert.equal(owners.optionalItems.get(1), null);
+assert.equal(owners.structural.get(1), 122);
+assert.equal(owners.rcText, "rc");
+assert.equal(owners.arcText, "arc");
+assert.equal(owners.rcVector[1], 132);
+assert.ok(numericOwnerBacking.subarray(0, 16).every(value => value === 0xa5));
+assert.ok(numericOwnerBacking.subarray(16 + numericOwnerBytes.length).every(value => value === 0xa5));
 
 const containers = ContainersView.create({
     label: "containers 🦀", items: [[11, "first"], [22, "second"]], pair: [7, 91n],

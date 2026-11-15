@@ -30,7 +30,7 @@ pub(super) fn view(plan: &TypeGraph, id: Id) -> Result<BTreeSet<String>, Generat
             references.codec("measure", id)?;
         }
     }
-    if node.options.generation.setters && node.options.values() && !plan.has_payload(id) {
+    if node.options.value_generation().setters && !plan.has_payload(id) {
         references.input(id);
         references.codec("write", node.codec)?;
     }

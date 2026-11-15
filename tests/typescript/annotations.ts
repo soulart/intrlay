@@ -90,8 +90,8 @@ indexedFixed.withoutComponents.getLanesComponent(0, 0);
 indexedFixed.withComponents.getChild(0).value = 31;
 
 declare const indexedWriteOnly: IndexedWriteOnlyView;
-indexedWriteOnly.items.getValues(0).set(1, 20);
-indexedWriteOnly.fixed.getValues(0).set(0, 30);
+indexedWriteOnly.items.getValues(0)[1] = 20;
+indexedWriteOnly.fixed.getValues(0)[0] = 30;
 // @ts-expect-error Mutation navigation does not restore the whole-element getter.
 indexedWriteOnly.items.get(0);
 // @ts-expect-error Scalar reads remain omitted.

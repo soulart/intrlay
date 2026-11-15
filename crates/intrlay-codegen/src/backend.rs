@@ -6,10 +6,10 @@ use crate::{
     GenerateError, GenerateOptions, Modifier, NamingPolicy, SymbolKind, plan::GenerationPlan,
 };
 
-/// The schema always retains array extents; only the target API may erase them.
+/// Numeric collections retain their wire layout independently of the target API.
 #[derive(Clone, Copy, PartialEq, Eq)]
-pub enum FixedArrayApi {
-    /// Preserve the source language's structural array projection.
+pub enum NumericCollectionApi {
+    /// Preserve structural collection views and fixed-array extents.
     Structural,
     /// Expose primitive lanes through a dynamically sized numeric view.
     Numeric,
@@ -43,8 +43,8 @@ pub struct Backend {
     pub native_numeric_array_views: bool,
     /// Numeric collection writes use runtime functions without scalar helper calls.
     pub runtime_numeric_array_writers: bool,
-    /// Default representation of fixed arrays of primitive numeric elements.
-    pub fixed_array_api: FixedArrayApi,
+    /// Default representation of contiguous primitive numeric collections.
+    pub numeric_collection_api: NumericCollectionApi,
     /// Scalar-compatible field assignments use this target's property or method syntax.
     pub field_setter: crate::api::SetterSyntax,
     /// Root scalar/optional exports can have different property requirements.

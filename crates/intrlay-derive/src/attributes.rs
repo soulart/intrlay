@@ -1,6 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 
-use intrlay_schema::Language;
+use intrlay_schema::{Language, ViewOptions};
 use proc_macro2::TokenStream;
 use quote::quote;
 use syn::{Attribute, Expr, LitInt, LitStr, Path, Type, WherePredicate};
@@ -29,6 +29,7 @@ pub struct Attributes {
     pub generate_byte_range_accessors: Option<bool>,
     pub generate_value_accessors: Option<bool>,
     pub create: Option<bool>,
+    pub view: Option<ViewOptions>,
     pub runtime: Option<Path>,
     pub bounds: Option<Vec<WherePredicate>>,
     pub no_field_bounds: bool,
@@ -46,6 +47,7 @@ pub struct ApiAttributes {
     pub generate_byte_range_accessors: Option<bool>,
     pub generate_value_accessors: Option<bool>,
     pub create: Option<bool>,
+    pub view: Option<ViewOptions>,
 }
 
 pub enum Exposure {
@@ -129,6 +131,7 @@ impl Attributes {
                     "generate_component_accessors" => options.generate_component_accessors = Some(meta.value()?.parse::<syn::LitBool>()?.value),
                     "generate_byte_range_accessors" => options.generate_byte_range_accessors = Some(meta.value()?.parse::<syn::LitBool>()?.value),
                     "generate_value_accessors" => options.generate_value_accessors = Some(meta.value()?.parse::<syn::LitBool>()?.value),
+                    "view" => options.view = Some(parse_view(&meta)?),
                     "create" => options.create = Some(meta.value()?.parse::<syn::LitBool>()?.value),
                     "crate" => options.runtime = Some(meta.value()?.parse::<LitStr>()?.parse()?),
                     "bound" => {
@@ -198,6 +201,15 @@ impl Attributes {
                         .or(self.generate_value_accessors)
                 })
                 .flatten();
+            let view = reference_target
+                .then(|| {
+                    let mut view = self.view.clone().unwrap_or_default();
+                    if let Some(overrides) = &api.view {
+                        view.override_with(overrides);
+                    }
+                    view
+                })
+                .filter(|view| *view != ViewOptions::default());
             if name.is_none()
                 && projection.is_none()
                 && getters.is_none()
@@ -206,34 +218,25 @@ impl Attributes {
                 && ranges.is_none()
                 && values.is_none()
                 && create.is_none()
+                && view.is_none()
             {
                 return None;
             }
             let language = syn::Ident::new(&format!("{variant:?}"), proc_macro2::Span::call_site());
-            let exposure = match projection {
-                None => quote!(::core::option::Option::None),
-                Some(Exposure::Fields) => {
-                    quote!(::core::option::Option::Some(#runtime::schema::Exposure::Fields))
-                }
-                Some(Exposure::Flatten) => {
-                    quote!(::core::option::Option::Some(#runtime::schema::Exposure::Flatten))
-                }
-                Some(Exposure::Indexed) => {
-                    quote!(::core::option::Option::Some(#runtime::schema::Exposure::Indexed))
-                }
-                Some(Exposure::IndexedOnly) => {
-                    quote!(::core::option::Option::Some(#runtime::schema::Exposure::IndexedOnly))
-                }
-                Some(Exposure::TypedArray(scalar)) => quote!(::core::option::Option::Some(
-                    #runtime::schema::Exposure::TypedArray(#runtime::schema::Scalar::#scalar)
-                )),
-            };
+            let exposure = exposure_tokens(projection, runtime);
             let getters = optional_bool(getters);
             let mutators = optional_bool(mutators);
             let components = optional_bool(components);
             let ranges = optional_bool(ranges);
             let values = optional_bool(values);
             let create = optional_bool(create);
+            let view = view.map_or_else(
+                || quote!(::core::option::Option::None),
+                |view| {
+                    let view = view_tokens(&view, runtime);
+                    quote!(::core::option::Option::Some(#view))
+                },
+            );
             let name = name.map_or_else(
                 || quote!(::core::option::Option::None),
                 |name| quote!(::core::option::Option::Some(#name.into())),
@@ -249,6 +252,7 @@ impl Attributes {
                     generate_byte_range_accessors: #ranges,
                     generate_value_accessors: #values,
                     create: #create,
+                    view: #view,
                 }
             )))
         });
@@ -292,6 +296,7 @@ impl ApiAttributes {
                 | "generate_component_accessors"
                 | "generate_byte_range_accessors"
                 | "generate_value_accessors"
+                | "view"
         ) && matches!(language, "rust" | "cpp" | "csharp")
         {
             return Err(meta
@@ -318,14 +323,78 @@ impl ApiAttributes {
                 self.generate_value_accessors = Some(meta.value()?.parse::<syn::LitBool>()?.value);
             }
             "create" => self.create = Some(meta.value()?.parse::<syn::LitBool>()?.value),
+            "view" => self.view = Some(parse_view(meta)?),
             _ => {
                 return Err(
-                    meta.error("expected name, generate_getters, generate_setters, generate_component_accessors, generate_byte_range_accessors, generate_value_accessors, or create")
+                    meta.error("expected name, generate_getters, generate_setters, generate_component_accessors, generate_byte_range_accessors, generate_value_accessors, create, or view")
                 );
             }
         }
         Ok(())
     }
+}
+
+fn exposure_tokens(exposure: Option<&Exposure>, runtime: &Path) -> TokenStream {
+    let value = match exposure {
+        None => return quote!(::core::option::Option::None),
+        Some(Exposure::Fields) => quote!(#runtime::schema::Exposure::Fields),
+        Some(Exposure::Flatten) => quote!(#runtime::schema::Exposure::Flatten),
+        Some(Exposure::Indexed) => quote!(#runtime::schema::Exposure::Indexed),
+        Some(Exposure::IndexedOnly) => quote!(#runtime::schema::Exposure::IndexedOnly),
+        Some(Exposure::TypedArray(scalar)) => quote!(
+            #runtime::schema::Exposure::TypedArray(#runtime::schema::Scalar::#scalar)
+        ),
+    };
+    quote!(::core::option::Option::Some(#value))
+}
+
+fn parse_view(meta: &syn::meta::ParseNestedMeta<'_>) -> syn::Result<ViewOptions> {
+    let mut result = ViewOptions::default();
+    let mut seen = BTreeSet::new();
+    meta.parse_nested_meta(|option| {
+        let key = option_name(&option)?;
+        unique(&option, &key, &mut seen)?;
+        if key == "elements" {
+            result.elements = Some(Box::new(parse_view(&option)?));
+            return Ok(());
+        }
+        let destination = match key.as_str() {
+            "generate_getters" => &mut result.generate_getters,
+            "generate_setters" => &mut result.generate_setters,
+            "generate_component_accessors" => &mut result.generate_component_accessors,
+            "generate_byte_range_accessors" => &mut result.generate_byte_range_accessors,
+            "generate_value_accessors" => &mut result.generate_value_accessors,
+            _ => {
+                return Err(option.error("expected an accessor generation option or elements(...)"));
+            }
+        };
+        *destination = Some(option.value()?.parse::<syn::LitBool>()?.value);
+        Ok(())
+    })?;
+    Ok(result)
+}
+
+fn view_tokens(view: &ViewOptions, runtime: &Path) -> TokenStream {
+    let getters = optional_bool(view.generate_getters);
+    let setters = optional_bool(view.generate_setters);
+    let components = optional_bool(view.generate_component_accessors);
+    let ranges = optional_bool(view.generate_byte_range_accessors);
+    let values = optional_bool(view.generate_value_accessors);
+    let elements = view.elements.as_ref().map_or_else(
+        || quote!(::core::option::Option::None),
+        |elements| {
+            let elements = view_tokens(elements, runtime);
+            quote!(::core::option::Option::Some(::std::boxed::Box::new(#elements)))
+        },
+    );
+    quote!(#runtime::schema::ViewOptions {
+        generate_getters: #getters,
+        generate_setters: #setters,
+        generate_component_accessors: #components,
+        generate_byte_range_accessors: #ranges,
+        generate_value_accessors: #values,
+        elements: #elements,
+    })
 }
 
 fn option_name(meta: &syn::meta::ParseNestedMeta<'_>) -> syn::Result<String> {
@@ -469,6 +538,21 @@ fn parse_native_layout(
 #[cfg(test)]
 mod tests {
     use super::{Attributes, Scope};
+
+    #[test]
+    fn view_configuration_rejects_unsupported_and_duplicate_options() {
+        for invalid in [
+            syn::parse_quote!(#[intrlay(view(create = false))]),
+            syn::parse_quote!(#[intrlay(view(project = "f32"))]),
+            syn::parse_quote!(#[intrlay(view(generate_setters = false, generate_setters = true))]),
+            syn::parse_quote!(#[intrlay(view(elements(generate_getters = false, generate_getters = true)))]),
+            syn::parse_quote!(#[intrlay(rust(view(generate_getters = false)))]),
+            syn::parse_quote!(#[intrlay(cpp(view(generate_setters = false)))]),
+            syn::parse_quote!(#[intrlay(csharp(view(generate_value_accessors = false)))]),
+        ] {
+            assert!(Attributes::parse(&[invalid], Scope::Field).is_err());
+        }
+    }
 
     #[test]
     fn native_layout_proofs_are_explicit_container_annotations() -> syn::Result<()> {

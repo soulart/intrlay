@@ -206,8 +206,8 @@ for (const collection of [indexedWriteOnly.items, indexedWriteOnly.fixed]) {
     assert.equal(collection.getId, undefined);
 }
 indexedWriteOnly.items.setId(0, 17);
-indexedWriteOnly.items.getValues(0).set(1, 20);
-indexedWriteOnly.fixed.getValues(0).set(0, 30);
+indexedWriteOnly.items.getValues(0)[1] = 20;
+indexedWriteOnly.fixed.getValues(0)[0] = 30;
 assert.deepEqual(indexedWriteOnly.storage.bytes, new Uint8Array(fs.readFileSync("target/regressions/indexed-write-only-changed.bin")));
 
 await import("./projections.mjs");

@@ -6,12 +6,14 @@ import '../../target/compositions/projected-enums-data.dart';
 import '../../target/compositions/nested-enums-data.dart';
 import 'dart:typed_data';
 import '../../target/compositions/containers-data.dart';
+import '../../target/compositions/numeric-owners-data.dart';
 
 void check(bool value) { if (!value) throw StateError('composition regression'); }
 
 Float32List padded(double value) => Float32List.fromList([value, 0, 0, 0]);
 
 void main() {
+  checkNumericOwners();
   final containers = ContainersView.create(ContainersInput(
     label: 'containers 🦀', items: [(11, 'first'), (22, 'second')], pair: (7, 91),
     nested: ((53,), ('nested', true)), wide: (1, 2, 3, 4, 5, 6, 7, 8, 9),
@@ -113,6 +115,48 @@ void main() {
   check(identical(root.value, root.value));
   root.value!.value = 2;
   check(root.value!.value == 2);
+}
+
+void checkNumericOwners() {
+  const input = NumericOwnersInput(
+    boxed: intrlay.SequenceInput.from([11, 12]), vector: intrlay.SequenceInput.from([21, 22]),
+    rc: intrlay.SequenceInput.from([31, 32]), arc: intrlay.SequenceInput.from([41, 42]),
+    optional: intrlay.SequenceInput.from([51, 52]), empty: intrlay.SequenceInput.from([]), absent: null,
+    nested: [intrlay.SequenceInput.from([61, 62]), intrlay.SequenceInput.from([])],
+    fixedSlices: [intrlay.SequenceInput.from([71, 72]), intrlay.SequenceInput.from([])],
+    fixed: intrlay.FixedArrayInput.from([81, 82]),
+    matrix: intrlay.SequenceInput.from([intrlay.FixedArrayInput.from([1, 2]), intrlay.FixedArrayInput.from([3, 4])]),
+    tuple: ('tuple', intrlay.SequenceInput.from([91, 92]), 93),
+    flattened: (101, intrlay.FixedArrayInput.from([102, 103])),
+    optionalItems: [111, null], structural: intrlay.SequenceInput.from([121, 122]),
+    rcText: 'rc', arcText: 'arc', rcVector: intrlay.SequenceInput.from([131, 132]),
+  );
+  final created = NumericOwnersView.create(input);
+  check(created.storage.bytes.length == numericOwnerBytes.length);
+  for (var i = 0; i < numericOwnerBytes.length; ++i) { check(created.storage.bytes[i] == numericOwnerBytes[i]); }
+  final backing = Uint8List(numericOwnerBytes.length + 32)..fillRange(0, numericOwnerBytes.length + 32, 0xa5);
+  final owners = NumericOwnersView.createInPlace(Uint8List.sublistView(backing, 16), input);
+  final values = [owners.boxed, owners.vector, owners.rc, owners.arc];
+  final offsets = [owners.boxedByteOffset, owners.vectorByteOffset, owners.rcByteOffset, owners.arcByteOffset];
+  final lengths = [owners.boxedByteLength, owners.vectorByteLength, owners.rcByteLength, owners.arcByteLength];
+  for (var i = 0; i < values.length; ++i) {
+    check(values[i][0] == 11 + 10 * i);
+    check(values[i].offsetInBytes == owners.storage.bytes.offsetInBytes + offsets[i]);
+    check(values[i].lengthInBytes == lengths[i]);
+    values[i][0] += 1;
+    check(owners.storage.data.getUint32(offsets[i], Endian.little) == 12 + 10 * i);
+  }
+  check(identical(owners.boxed, owners.boxed));
+  check(owners.empty.isEmpty && owners.emptyByteLength == 0);
+  check(owners.optional![1] == 52 && owners.absent == null);
+  check(owners.nested[0][1] == 62 && owners.nested[1].isEmpty);
+  check(owners.fixedSlices[0][1] == 72 && owners.fixed[1] == 82);
+  check(owners.matrix.length == 2 && owners.matrix[1][1] == 4);
+  check(owners.tuple.field0 == 'tuple' && owners.tuple.field1[1] == 92 && owners.flattenedField11 == 103);
+  check(owners.optionalItems[0] == 111 && owners.optionalItems[1] == null && owners.structural[1] == 122);
+  check(owners.rcText == 'rc' && owners.arcText == 'arc' && owners.rcVector[1] == 132);
+  check(backing.take(16).every((value) => value == 0xa5));
+  check(backing.skip(16 + numericOwnerBytes.length).every((value) => value == 0xa5));
 }
 
 void checkEnumProjection() {

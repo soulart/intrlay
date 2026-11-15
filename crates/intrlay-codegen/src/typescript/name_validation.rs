@@ -91,7 +91,7 @@ fn infrastructure(plan: &TypeGraph, id: Id) -> Result<Scope<'_>, GenerateError> 
             instances.runtime_member(key, "view storage")?;
         }
     }
-    if node.options.generation.setters && node.options.values() && !plan.has_payload(id) {
+    if node.options.value_generation().setters && !plan.has_payload(id) {
         instances.runtime_member("replace", "in-place value replacement")?;
     }
     match node.kind {

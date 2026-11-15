@@ -7,7 +7,13 @@ use intrlay_schema::Exposure;
 
 use crate::GenerateError;
 
-use super::{AccessorPolicy, Id, Kind, Options, TypeGraph};
+use super::{
+    AccessorPolicy, AccessorRequest, Id, Kind, Options, TypeGraph, accessor_requests::AccessorHints,
+};
+
+// Identical helper families can originate from different uses. Keep those
+// requests distinct until reachable collection APIs are deliberately unioned.
+type ProjectionContext = (Id, Exposure, AccessorPolicy, Option<Vec<AccessorRequest>>);
 
 /// Context-specific projections and the views actually instantiated by the API.
 pub struct ViewPlan {
@@ -18,6 +24,8 @@ pub struct ViewPlan {
 
 impl ViewPlan {
     pub(super) fn new(source: &TypeGraph) -> Result<Self, GenerateError> {
+        let configured = source.configure_views();
+        let source = &configured;
         let mut builder = ProjectionBuilder {
             source,
             plan: source.clone(),
@@ -27,7 +35,12 @@ impl ViewPlan {
                 .enumerate()
                 .map(|(id, node)| {
                     (
-                        (id, node.options.exposure, node.options.accessor_policy()),
+                        (
+                            id,
+                            node.options.exposure,
+                            node.options.accessor_policy(),
+                            node.options.requests.clone(),
+                        ),
                         id,
                     )
                 })
@@ -51,6 +64,19 @@ impl ViewPlan {
 }
 
 impl TypeGraph {
+    /// Use the same field-local helper choices when discovering child views and
+    /// when constructing their projected collection API.
+    pub(super) fn collection_hints(&self, id: Id, hints: &Options) -> Option<AccessorHints> {
+        match self.nodes[id].kind {
+            Kind::Sequence(element) | Kind::Array { element, .. }
+                if self.nodes[element].has_field_payload() =>
+            {
+                Some(AccessorHints::new(hints))
+            }
+            _ => None,
+        }
+    }
+
     /// Ordinary and indexed collection access need the same storage and return
     /// types. Merge their requested operations instead of emitting API subsets.
     /// Numeric projections and component-helper policies retain distinct views.
@@ -66,7 +92,6 @@ impl TypeGraph {
             let node = &self.nodes[id];
             if let Kind::Sequence(element) | Kind::Array { element, .. } = node.kind
                 && self.nodes[element].has_field_payload()
-                && self.folded_field(element).is_none()
                 && matches!(
                     node.options.exposure,
                     Exposure::Fields | Exposure::Indexed | Exposure::IndexedOnly
@@ -93,6 +118,7 @@ impl TypeGraph {
                 merged.options.generation.getters |= node.options.generation.getters;
                 merged.options.generation.setters |= node.options.generation.setters;
                 merged.options.generation.create |= node.options.generation.create;
+                merged.options.merge_requests(&node.options);
                 aliases[id] = target;
             }
             merged.options.exposure = match (elements, indexed) {
@@ -137,7 +163,7 @@ impl TypeGraph {
 struct ProjectionBuilder<'a> {
     source: &'a TypeGraph,
     plan: TypeGraph,
-    contexts: BTreeMap<(Id, Exposure, AccessorPolicy), Id>,
+    contexts: BTreeMap<ProjectionContext, Id>,
 }
 
 impl ProjectionBuilder<'_> {
@@ -152,27 +178,22 @@ impl ProjectionBuilder<'_> {
         // field using the same array type. Non-collection options stay local
         // to their declaration and are consulted by IndexedAccessors directly.
         let mut options = source.options.clone();
-        match source.kind {
-            Kind::Sequence(element) | Kind::Array { element, .. }
-                if self.source.nodes[element].has_field_payload() =>
-            {
-                options.component_accessors =
-                    hints.component_accessors.or(options.component_accessors);
-                options.byte_range_accessors =
-                    hints.byte_range_accessors.or(options.byte_range_accessors);
-                options.value_accessors = hints.value_accessors.or(options.value_accessors);
-            }
-            _ => {}
+        if let Some(helpers) = self.source.collection_hints(id, hints) {
+            helpers.apply(&mut options);
+            options.override_request_helpers(hints);
         }
-        let key = (id, exposure, options.accessor_policy());
+        let key = (
+            id,
+            exposure,
+            options.accessor_policy(),
+            options.requests.clone(),
+        );
         if let Some(&known) = self.contexts.get(&key) {
             return Ok(known);
         }
         let mut node = source.clone();
+        node.options = options;
         node.options.exposure = exposure;
-        node.options.component_accessors = options.component_accessors;
-        node.options.byte_range_accessors = options.byte_range_accessors;
-        node.options.value_accessors = options.value_accessors;
         node.options.generation.create = false;
         if exposure != source.options.exposure {
             node.view_name.push_str(match exposure {

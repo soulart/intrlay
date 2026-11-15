@@ -1,3 +1,4 @@
+mod accessor_requests;
 mod byte_range;
 mod cache;
 mod documentation;
@@ -9,7 +10,9 @@ mod input_plan;
 mod mutation;
 mod numeric_region;
 mod properties;
+mod view_configuration;
 mod view_plan;
+pub use accessor_requests::{AccessorRequest, field_requests, indexed_requests};
 pub use byte_range::ByteRange;
 pub use cache::ViewCache;
 pub use encoding::{EncodingPlan, WriterParameters};
@@ -22,7 +25,8 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use intrlay_layout::Layout;
 use intrlay_schema::{
-    ApiGeneration, DefinitionKind, Exposure, Language, Layouts, Scalar, Schema, TargetOptions, Type,
+    ApiGeneration, DefinitionKind, Exposure, Language, Layouts, Scalar, Schema, TargetOptions,
+    Type, ViewOptions,
 };
 
 use crate::{GenerateError, NamingPolicy, SymbolKind, Visibility, backend::Backend, names::Names};
@@ -45,10 +49,18 @@ pub struct Options {
     pub component_accessors: Option<bool>,
     pub byte_range_accessors: Option<bool>,
     pub value_accessors: Option<bool>,
+    pub view: ViewOptions,
+    /// Whole-value replacement follows declaration defaults independently of
+    /// which setters a use site requests inside the returned child view.
+    pub replacement_setters: Option<bool>,
+    /// Resolved use-site requests. `None` retains declaration defaults; an empty
+    /// resolved list means no reachable use requests an operation.
+    pub requests: Option<Vec<AccessorRequest>>,
 }
 
 impl Options {
     pub fn inherit_helpers(&mut self, parent: &Self) {
+        self.inherit_request_helpers(parent);
         self.component_accessors = self.component_accessors.or(parent.component_accessors);
         self.byte_range_accessors = self.byte_range_accessors.or(parent.byte_range_accessors);
         self.value_accessors = self.value_accessors.or(parent.value_accessors);
@@ -72,11 +84,14 @@ impl Options {
                 self.explicit_exposure = true;
             }
             if language.supports_accessor_generation() {
+                if let Some(view) = &overrides.view {
+                    self.view.override_with(view);
+                }
                 if let Some(getters) = overrides.generate_getters {
-                    self.generation.getters &= getters;
+                    self.generation.getters = getters;
                 }
                 if let Some(setters) = overrides.generate_setters {
-                    self.generation.setters &= setters;
+                    self.generation.setters = setters;
                 }
                 if let Some(components) = overrides.generate_component_accessors {
                     self.component_accessors = Some(components);
@@ -112,6 +127,8 @@ pub struct Field {
     pub offset: usize,
     pub docs: String,
     pub options: Options,
+    /// Explicit field/variant hints, before referenced type defaults are applied.
+    pub declared_accessors: ViewOptions,
 }
 
 impl Field {
@@ -178,6 +195,29 @@ pub struct Node {
 }
 
 impl Node {
+    /// Whether an explicit export contributes a standalone view API.
+    pub fn has_view_api(&self) -> bool {
+        self.options.generation.create
+            || self
+                .options
+                .view_requests()
+                .any(|request| request.getters || request.setters)
+    }
+
+    pub fn fields_mut(&mut self) -> impl Iterator<Item = &mut Field> {
+        let (fields, variants) = match &mut self.kind {
+            Kind::Record(fields) => (Some(fields), None),
+            Kind::Enum(variants) => (None, Some(variants)),
+            _ => (None, None),
+        };
+        fields.into_iter().flatten().chain(
+            variants
+                .into_iter()
+                .flatten()
+                .flat_map(|variant| &mut variant.fields),
+        )
+    }
+
     /// Fields retain their variant so indexed APIs can guard payload access.
     pub fn fields(&self) -> impl Iterator<Item = (&Field, Option<&Variant>)> {
         let record = if let Kind::Record(fields) = &self.kind {
@@ -329,6 +369,9 @@ impl TypeGraph {
                             &format!("{}.{}", definition.name, variant.name),
                         )?;
                         for (field, declaration) in fields.iter_mut().zip(&variant.fields) {
+                            let mut declared = accessor_options(variant_options);
+                            declared.override_with(&field.declared_accessors);
+                            field.declared_accessors = declared;
                             field.options.apply(variant_options, language);
                             // Variant policies supply defaults; explicit field choices
                             // still select their own accessor families.
@@ -376,7 +419,7 @@ impl TypeGraph {
             builder.plan.exports.insert(identifier(name)?, id);
         }
         builder.plan.classify_nodes();
-        builder.plan.resolve_array_projections();
+        builder.plan.resolve_collection_projections();
         builder.plan.check_exposures()?;
         builder.plan.check_transparent_aliases()?;
         builder.plan.canonical_nodes = builder.plan.nodes.len();
@@ -388,25 +431,32 @@ impl TypeGraph {
         self.nodes[id].input_name()
     }
 
-    fn resolve_array_projections(&mut self) {
-        use crate::backend::FixedArrayApi;
-        if self.backend.fixed_array_api == FixedArrayApi::Structural {
+    fn resolve_collection_projections(&mut self) {
+        use crate::backend::NumericCollectionApi;
+        if self.backend.numeric_collection_api == NumericCollectionApi::Structural {
             return;
         }
         let projections: Vec<_> = self
             .nodes
             .iter()
-            .enumerate()
-            .map(|(id, node)| {
+            .map(|node| {
                 if node.options.explicit_exposure {
                     return node.options.exposure;
                 }
-                if matches!(node.kind, Kind::Array { .. })
-                    && let Some(scalar) = self.array_scalar(id)
-                {
-                    return Exposure::TypedArray(scalar);
-                }
-                node.options.exposure
+                // A sequence of arrays retains its element boundaries unless
+                // explicitly projected. This also preserves zero-sized elements.
+                let element = match node.kind {
+                    Kind::Array { element, .. } => Some(element),
+                    Kind::Sequence(element)
+                        if matches!(self.nodes[element].kind, Kind::Scalar(_)) =>
+                    {
+                        Some(element)
+                    }
+                    _ => None,
+                };
+                element
+                    .and_then(|element| self.array_scalar(element))
+                    .map_or(node.options.exposure, Exposure::TypedArray)
             })
             .collect();
         for (id, node) in self.nodes.iter_mut().enumerate() {
@@ -527,8 +577,7 @@ impl TypeGraph {
                     .then_some(id)
                 }),
         ) {
-            let generation = self.nodes[id].options.generation;
-            if generation.create || generation.getters || generation.setters {
+            if self.nodes[id].has_view_api() {
                 self.include_view(id, &mut views);
             }
         }
@@ -580,8 +629,8 @@ impl TypeGraph {
                     }
                 }
             }
-            _ if node.options.values()
-                && (node.options.generation.getters || node.options.generation.setters) =>
+            _ if node.options.value_generation().getters
+                || node.options.value_generation().setters =>
             {
                 self.include_value_view(id, node.options.exposure, views);
             }
@@ -953,6 +1002,9 @@ impl<'a> Builder<'a> {
             };
             let mut options = Options::default();
             options.apply(inherited, self.language);
+            // A referenced declaration's child-view defaults belong inside
+            // that declaration, not on the accessor which returns it.
+            options.view = ViewOptions::default();
             options.apply(field.targets.get(&self.language), self.language);
             let source_name = if field.name.chars().all(|c| c.is_ascii_digit()) {
                 format!("field_{}", field.name)
@@ -991,6 +1043,7 @@ impl<'a> Builder<'a> {
                 offset: base + offset,
                 docs: field.docs.clone(),
                 options,
+                declared_accessors: accessor_options(field.targets.get(&self.language)),
             });
         }
         Ok(result)
@@ -1010,25 +1063,21 @@ pub(crate) fn identifier(name: &str) -> Result<String, GenerateError> {
     }
 }
 
+fn accessor_options(options: Option<&TargetOptions>) -> ViewOptions {
+    options.map_or_else(ViewOptions::default, |options| ViewOptions {
+        generate_getters: options.generate_getters,
+        generate_setters: options.generate_setters,
+        generate_component_accessors: options.generate_component_accessors,
+        generate_byte_range_accessors: options.generate_byte_range_accessors,
+        generate_value_accessors: options.generate_value_accessors,
+        elements: None,
+    })
+}
+
 pub fn field_generation(node: &Node, field: &Field) -> ApiGeneration {
     ApiGeneration {
         getters: node.options.generation.getters && field.options.generation.getters,
         setters: node.options.generation.setters && field.options.generation.setters,
         create: node.options.generation.create && field.options.generation.create,
-    }
-}
-
-/// Indexed helpers expose an element's field on its enclosing collection.
-/// Only indexed projections emit them. Both declarations' emission hints apply.
-pub fn indexed_field_generation(collection: &Node, element: &Node, field: &Field) -> ApiGeneration {
-    let indexed = matches!(
-        collection.options.exposure,
-        Exposure::Indexed | Exposure::IndexedOnly
-    );
-    let generation = field_generation(element, field);
-    ApiGeneration {
-        getters: indexed && collection.options.generation.getters && generation.getters,
-        setters: indexed && collection.options.generation.setters && generation.setters,
-        create: indexed && collection.options.generation.create && generation.create,
     }
 }

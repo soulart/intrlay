@@ -13,8 +13,7 @@ use intrlay_schema::ApiGeneration;
 use crate::{
     GenerateError,
     plan::{
-        Field, Id, Mutation, Node, TypeGraph, Variant, ViewCache, field_generation,
-        indexed_field_generation,
+        Field, Id, Mutation, Node, TypeGraph, Variant, ViewCache, field_requests, indexed_requests,
     },
     symbols,
 };
@@ -50,12 +49,7 @@ pub struct Accessor {
 
 impl Accessor {
     pub fn field(plan: &TypeGraph, node: &Node, field: &Field, variant: Option<&Variant>) -> Self {
-        let generation = field_generation(node, field);
-        let values = field
-            .options
-            .value_accessors
-            .or(node.options.value_accessors)
-            .unwrap_or(true);
+        let generation = value_requests(plan, field, field_requests(node, field));
         let mut accessor = Self::new(
             plan,
             field.ty,
@@ -69,7 +63,7 @@ impl Accessor {
                     },
                 )
             },
-            field_value_generation(plan, field, generation, values),
+            generation,
             variant.is_some(),
             false,
         );
@@ -94,7 +88,7 @@ impl Accessor {
             plan,
             id,
             |_| name,
-            mask_values(node.options.generation, node.options.values()),
+            node.options.value_generation(),
             false,
             true,
         );
@@ -220,6 +214,31 @@ fn mask_values(mut generation: ApiGeneration, enabled: bool) -> ApiGeneration {
     generation
 }
 
+fn value_requests(
+    plan: &TypeGraph,
+    field: &Field,
+    requests: impl Iterator<Item = crate::plan::AccessorRequest>,
+) -> ApiGeneration {
+    requests.fold(
+        ApiGeneration {
+            getters: false,
+            setters: false,
+            create: false,
+        },
+        |mut result, request| {
+            let generation = field_value_generation(
+                plan,
+                field,
+                request.generation(),
+                request.values.unwrap_or(true),
+            );
+            result.getters |= generation.getters;
+            result.setters |= generation.setters;
+            result
+        },
+    )
+}
+
 /// Indexed collections need a navigation getter even when value access is
 /// omitted. Keep the path to their helpers without enabling whole-value setters.
 fn field_value_generation(
@@ -259,13 +278,14 @@ pub struct CollectionAccessors {
 
 impl CollectionAccessors {
     pub fn new(plan: &TypeGraph, owner: &Node, element: Id) -> Self {
+        let generation = owner.options.value_generation();
         Self {
             getter: owner.options.exposure != intrlay_schema::Exposure::IndexedOnly
-                && owner.options.values()
-                && needs_navigation_getter(plan, element, owner.options.generation),
-            setter: (owner.options.generation.setters && owner.options.values())
-                .then(|| plan.mutation(element))
-                .flatten(),
+                && owner.options.view_requests().any(|request| {
+                    request.elements()
+                        && needs_navigation_getter(plan, element, request.value_generation())
+                }),
+            setter: generation.setters.then(|| plan.mutation(element)).flatten(),
         }
     }
 }
@@ -285,7 +305,7 @@ impl IndexedAccessors {
         field: &Field,
         variant: Option<&Variant>,
     ) -> Self {
-        let generation = indexed_field_generation(owner, element, field);
+        let generation = value_requests(plan, field, indexed_requests(owner, element, field));
         let name = variant.map_or_else(
             || plan.backend.api.field_accessor(plan, field, true),
             |variant| {
@@ -299,13 +319,6 @@ impl IndexedAccessors {
                 .method(&format!("{prefix}_{name}{suffix}"), false)
         };
         let helpers = FieldHelpers::indexed(plan, owner, element, field, &name);
-        let values = field
-            .options
-            .value_accessors
-            .or(element.options.value_accessors)
-            .or(owner.options.value_accessors)
-            .unwrap_or(true);
-        let generation = field_value_generation(plan, field, generation, values);
         Self {
             getter: needs_navigation_getter(plan, field.ty, generation).then(|| method("get", "")),
             setter: generation
@@ -328,9 +341,15 @@ impl IndexedAccessors {
                 owner.options.exposure,
                 intrlay_schema::Exposure::Indexed | intrlay_schema::Exposure::IndexedOnly
             )
-            && owner.options.generation.getters
-            && element.options.generation.getters)
-            .then(|| plan.names.method("get_tag", false))
+            && owner.options.view_requests().any(|parent| {
+                parent.indexed()
+                    && parent.getters
+                    && element
+                        .options
+                        .accessor_requests()
+                        .any(|child| child.follows(parent) && child.getters)
+            }))
+        .then(|| plan.names.method("get_tag", false))
     }
 
     pub fn declarations(&self) -> impl Iterator<Item = (&str, &'static str)> {

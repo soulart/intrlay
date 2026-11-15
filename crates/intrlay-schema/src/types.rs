@@ -148,6 +148,61 @@ impl Default for ApiGeneration {
     }
 }
 
+/// Accessor defaults supplied by a use of a type, independently of its codec.
+///
+/// Unspecified choices retain the referenced declaration's defaults. These
+/// requests propagate through child values; compatible views combine the
+/// requests of their reachable users rather than enforcing access permissions.
+#[derive(Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(default)]
+pub struct ViewOptions {
+    /// Request value getters and read helpers.
+    pub generate_getters: Option<bool>,
+    /// Request setters and mutation helpers.
+    pub generate_setters: Option<bool>,
+    /// Request direct numeric component accessors.
+    pub generate_component_accessors: Option<bool>,
+    /// Request byte offset and byte length accessors.
+    pub generate_byte_range_accessors: Option<bool>,
+    /// Request ordinary value accessors in addition to any direct helpers.
+    pub generate_value_accessors: Option<bool>,
+    /// More specific defaults for a collection's elements. Option and Box do
+    /// not consume this scope; each array or sequence consumes one level.
+    pub elements: Option<Box<Self>>,
+}
+
+impl ViewOptions {
+    /// Applies explicit choices from a more specific configuration.
+    pub fn override_with(&mut self, other: &Self) {
+        self.generate_getters = other.generate_getters.or(self.generate_getters);
+        self.generate_setters = other.generate_setters.or(self.generate_setters);
+        self.generate_component_accessors = other
+            .generate_component_accessors
+            .or(self.generate_component_accessors);
+        self.generate_byte_range_accessors = other
+            .generate_byte_range_accessors
+            .or(self.generate_byte_range_accessors);
+        self.generate_value_accessors = other
+            .generate_value_accessors
+            .or(self.generate_value_accessors);
+        if let Some(elements) = &other.elements {
+            self.elements
+                .get_or_insert_default()
+                .override_with(elements);
+        }
+    }
+
+    /// Inherits the current choices and consumes a collection element scope.
+    #[must_use]
+    pub fn for_elements(&self) -> Self {
+        let mut result = self.clone();
+        if let Some(elements) = result.elements.take() {
+            result.override_with(&elements);
+        }
+        result
+    }
+}
+
 /// Target-specific API choices, separate from the binary representation.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TargetOptions {
@@ -172,6 +227,10 @@ pub struct TargetOptions {
     pub generate_value_accessors: Option<bool>,
     /// Whether to emit size calculation and construction APIs, inheriting when absent.
     pub create: Option<bool>,
+    /// Defaults for child views. On a field this configures its referenced value;
+    /// on a declaration it supplies defaults for all of that declaration's fields.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub view: Option<ViewOptions>,
 }
 
 /// One declaration-ordered field.

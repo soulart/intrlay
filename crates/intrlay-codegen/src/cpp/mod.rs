@@ -32,7 +32,7 @@ pub const BACKEND: crate::backend::Backend = crate::backend::Backend {
     input_field_modifiers: &[],
     codec_function_kind: crate::SymbolKind::Function,
     codec_function_modifiers: &[],
-    fixed_array_api: crate::backend::FixedArrayApi::Structural,
+    numeric_collection_api: crate::backend::NumericCollectionApi::Structural,
     native_numeric_array_views: false,
     runtime_numeric_array_writers: false,
 };

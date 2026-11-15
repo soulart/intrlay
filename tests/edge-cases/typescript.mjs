@@ -17,7 +17,7 @@ assert.equal(root.zeroes.units.length, 0);
 assert.equal(root.zeroes.elements.length, 2);
 assert.equal(root.shadow.custom.value, 13);
 assert.equal(root.shadow.optional, 14);
-assert.equal(root.shadow.items.get(0), 15);
+assert.equal(root.shadow.items[0], 15);
 assert.equal(root.choice.valueChild.value, 16);
 assert.equal(root.projection.numeric.length, 4);
 assert.equal(root.projection.named, 2);

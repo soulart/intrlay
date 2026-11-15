@@ -197,6 +197,37 @@ fn annotations_preserve_source_identity() -> Result<(), Box<dyn std::error::Erro
     let id = common::definition(&schema, "CppId");
     assert!(id.transparent);
     assert_eq!(id.alignment, 16);
+    let configured = common::definition(&schema, "ConfiguredViews");
+    assert_eq!(
+        configured.targets[&Language::TypeScript]
+            .view
+            .as_ref()
+            .ok_or("view options expected")?
+            .generate_setters,
+        Some(false)
+    );
+    let DefinitionKind::Record(configured_fields) = &configured.kind else {
+        panic!("record expected");
+    };
+    let view = configured_fields[0].targets[&Language::TypeScript]
+        .view
+        .as_ref()
+        .ok_or("field view options expected")?;
+    assert_eq!(view.generate_setters, Some(true));
+    assert_eq!(
+        view.elements
+            .as_ref()
+            .ok_or("element options expected")?
+            .generate_setters,
+        Some(false)
+    );
+    assert_eq!(
+        view.elements
+            .as_ref()
+            .ok_or("element options expected")?
+            .generate_byte_range_accessors,
+        Some(true)
+    );
     let DefinitionKind::Record(fields) = &common::definition(&schema, "RenamedField").kind else {
         panic!("record expected")
     };

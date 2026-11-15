@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.1.7]
+
+- Add child-view accessor configuration through Rust `view(...)` and C++
+  `view.*` annotations. Parents can override nested getter, setter, value,
+  numeric-component, and byte-range defaults, including library adapters.
+  Nested `elements` scopes and TypeScript, Python, and Dart filters are supported.
+- Combine the operations requested by reachable uses of a shared View while
+  preserving field-level overrides. Flattened and indexed-only accessors do not
+  enable unrelated APIs on ordinary child Views. Unreachable Views are omitted.
+- Expose numeric scalar sequences as TypeScript TypedArrays, Python memoryviews,
+  and Dart typed lists by default, including Rust boxed slices and explicit
+  reference-counted slice adapters. `project = "fields"` retains structural
+  collection access. Optional elements retain their presence-aware APIs.
+- Keep explicit numeric projections on construction inputs when value accessors
+  are omitted. Remove unused numeric input aliases while retaining the inputs
+  and encoding helpers needed for construction and replacement.
+
+Regenerate bindings to apply the generated API changes. Existing schema wire
+layouts are unchanged; Rust, C++, and C# retain their complete accessor APIs.
+
 ## [0.1.6]
 
 - Support Rust `Box<[T]>` and `Box<str>` using the existing sequence and string

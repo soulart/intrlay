@@ -51,9 +51,9 @@ for (const create of [
     // Different values of the same size remain valid, including after a failed write.
     const equalSize = create(changingValues([1], [42]));
     assert.equal(equalSize.values.length, 1);
-    assert.equal(equalSize.values.get(0), 42);
+    assert.equal(equalSize.values[0], 42);
     const stable = create({ values: [7, 11] });
-    assert.equal(stable.values.get(1), 11);
+    assert.equal(stable.values[1], 11);
 }
 assert.ok(backing.subarray(0, 8).every(value => value === 0xa5));
 assert.ok(backing.subarray(56).every(value => value === 0xa5));

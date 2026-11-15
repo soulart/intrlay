@@ -30,7 +30,7 @@ pub const BACKEND: crate::backend::Backend = crate::backend::Backend {
     input_field_modifiers: &[crate::Modifier::Readonly],
     codec_function_kind: crate::SymbolKind::Function,
     codec_function_modifiers: &[],
-    fixed_array_api: crate::backend::FixedArrayApi::Numeric,
+    numeric_collection_api: crate::backend::NumericCollectionApi::Numeric,
     native_numeric_array_views: true,
     runtime_numeric_array_writers: false,
 };
@@ -599,7 +599,7 @@ fn view_members(
     id: Id,
     node: &Node,
 ) -> Result<(), GenerateError> {
-    if node.options.generation.setters && node.options.values() && !plan.has_payload(id) {
+    if node.options.value_generation().setters && !plan.has_payload(id) {
         let codec = node.codec;
         method(
             output,

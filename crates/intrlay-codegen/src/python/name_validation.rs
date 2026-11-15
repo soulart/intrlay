@@ -194,7 +194,7 @@ fn view_members(plan: &TypeGraph, id: Id) -> Result<(), GenerateError> {
     for reference in references::view(plan, id)? {
         members.member(&reference, "referenced type or codec")?;
     }
-    if node.options.generation.setters && node.options.values() && !plan.has_payload(id) {
+    if node.options.value_generation().setters && !plan.has_payload(id) {
         members.runtime_member("replace", "in-place value replacement")?;
     }
     if matches!(node.kind, Kind::Enum(_)) && node.options.generation.getters {

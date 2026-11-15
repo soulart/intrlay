@@ -42,6 +42,7 @@ mod regressions;
 mod replacement;
 mod rust_alias_names;
 mod rust_primitive_names;
+mod view_configuration;
 
 #[derive(Default)]
 pub(crate) struct Fixtures {
@@ -132,5 +133,6 @@ pub(crate) fn collect() -> Result<Fixtures, Box<dyn Error>> {
     reference_loads::collect(&mut fixtures)?;
     rust_alias_names::collect(&mut fixtures)?;
     rust_primitive_names::collect(&mut fixtures)?;
+    view_configuration::collect(&mut fixtures)?;
     Ok(fixtures)
 }

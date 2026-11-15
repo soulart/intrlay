@@ -19,7 +19,7 @@ pub(super) fn view(plan: &TypeGraph, id: Id) -> Result<BTreeSet<String>, Generat
     };
     let node = &plan.nodes[id];
     if node.options.generation.create
-        || (node.options.generation.setters && node.options.values() && !plan.has_payload(id))
+        || (node.options.value_generation().setters && !plan.has_payload(id))
     {
         references.input(id);
     }

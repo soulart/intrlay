@@ -1,10 +1,8 @@
 //! Auxiliary field APIs share one emission policy across ordinary and indexed
 //! fields. Byte ranges expose wire storage; components expose numeric lanes.
 
-use intrlay_schema::ApiGeneration;
-
 use crate::plan::{
-    ByteRange, Field, Node, Options, TypeGraph, field_generation, indexed_field_generation,
+    AccessorRequest, ByteRange, Field, Node, TypeGraph, field_requests, indexed_requests,
 };
 
 #[derive(Default)]
@@ -51,14 +49,7 @@ impl FieldHelpers {
     }
 
     pub fn field(plan: &TypeGraph, owner: &Node, field: &Field, name: &str) -> Self {
-        Self::new(
-            plan,
-            field,
-            name,
-            field_generation(owner, field),
-            &[&field.options, &owner.options],
-            false,
-        )
+        Self::new(plan, field, name, field_requests(owner, field), false)
     }
 
     pub fn indexed(
@@ -72,8 +63,7 @@ impl FieldHelpers {
             plan,
             field,
             name,
-            indexed_field_generation(owner, element, field),
-            &[&field.options, &element.options, &owner.options],
+            indexed_requests(owner, element, field),
             true,
         )
     }
@@ -82,22 +72,22 @@ impl FieldHelpers {
         plan: &TypeGraph,
         field: &Field,
         name: &str,
-        generation: ApiGeneration,
-        policies: &[&Options],
+        requests: impl Iterator<Item = AccessorRequest>,
         indexed: bool,
     ) -> Self {
         if !plan.backend.language.supports_accessor_generation() {
             return Self::default();
         }
-        let components = policies
-            .iter()
-            .find_map(|policy| policy.component_accessors)
-            .unwrap_or(false)
-            && plan.component_scalar(field).is_some();
-        let ranges = policies
-            .iter()
-            .find_map(|policy| policy.byte_range_accessors)
-            .unwrap_or(false);
+        let mut read_components = false;
+        let mut write_components = false;
+        let mut ranges = false;
+        for request in requests {
+            read_components |= request.components.unwrap_or(false) && request.getters;
+            write_components |= request.components.unwrap_or(false) && request.setters;
+            ranges |= request.byte_ranges.unwrap_or(false) && request.getters;
+        }
+        let numeric =
+            (read_components || write_components) && plan.component_scalar(field).is_some();
         let range_name = |suffix| {
             if indexed {
                 plan.names.method(&format!("get_{name}_{suffix}"), false)
@@ -106,12 +96,12 @@ impl FieldHelpers {
             }
         };
         Self {
-            component_getter: (components && generation.getters)
+            component_getter: (numeric && read_components)
                 .then(|| plan.names.method(&format!("get_{name}_component"), false)),
-            component_setter: (components && generation.setters)
+            component_setter: (numeric && write_components)
                 .then(|| plan.names.method(&format!("set_{name}_component"), false)),
-            byte_offset: (ranges && generation.getters).then(|| range_name("byte_offset")),
-            byte_length: (ranges && generation.getters).then(|| range_name("byte_length")),
+            byte_offset: ranges.then(|| range_name("byte_offset")),
+            byte_length: ranges.then(|| range_name("byte_length")),
         }
     }
 

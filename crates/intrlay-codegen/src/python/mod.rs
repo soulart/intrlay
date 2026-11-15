@@ -41,7 +41,7 @@ pub const BACKEND: crate::backend::Backend = crate::backend::Backend {
     input_field_modifiers: &[],
     codec_function_kind: crate::SymbolKind::Function,
     codec_function_modifiers: &[],
-    fixed_array_api: crate::backend::FixedArrayApi::Numeric,
+    numeric_collection_api: crate::backend::NumericCollectionApi::Numeric,
     native_numeric_array_views: true,
     runtime_numeric_array_writers: false,
 };
@@ -735,7 +735,7 @@ fn view_members(
 ) -> Result<bool, GenerateError> {
     // Runtime property descriptors read the record offset indirectly.
     let mut descriptors = false;
-    if node.options.generation.setters && node.options.values() && !plan.has_payload(id) {
+    if node.options.value_generation().setters && !plan.has_payload(id) {
         let writer = names::reference(&crate::symbols::codec_function(plan, "write", node.codec)?);
         writeln!(
             output,

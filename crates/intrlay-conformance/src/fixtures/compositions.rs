@@ -1,5 +1,7 @@
 //! Feature combinations compiled and executed by tests/compositions consumers.
 
+mod owners;
+
 use super::Fixtures;
 
 use intrlay::{
@@ -98,6 +100,7 @@ struct TupleTree {
 }
 
 fn containers(fixtures: &mut Fixtures, registry: &mut Registry) -> Result<(), Box<dyn Error>> {
+    owners::collect(fixtures, registry)?;
     registry.export::<Containers>("Containers");
     registry.export::<TupleChoice>("TupleChoice");
     registry.export::<TupleTree>("TupleTree");

@@ -121,9 +121,10 @@ chosen JavaScript bridge.
 
 ## Composite values
 
-Scalar fields use Dart's numeric types. Numeric projections use typed lists such
-as `Float32List`; structural collections retain typed child views. Common
-`project` annotations can choose the desired API without changing the encoding.
+Scalar fields use Dart's numeric types. Numeric sequences, fixed arrays, and
+explicit numeric projections use typed lists such as `Float32List`;
+structural collections retain typed child views. See
+[projections](../reference/annotations.mdx#projections) for API options.
 
 Optional values use nullable types. Nested states such as an absent optional and
 a present optional containing `null` remain distinct through `Some` wrappers.

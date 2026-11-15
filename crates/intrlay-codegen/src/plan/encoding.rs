@@ -26,13 +26,22 @@ pub struct WriterParameters {
 }
 
 impl EncodingPlan {
-    /// Reference-type targets omit inputs that no writer accepts. Native value
-    /// enums also serve as tag constants, so their declarations remain available
-    /// to readers. Value-type targets retain their complete native input APIs.
+    /// Reference-type targets omit unreferenced input declarations. Numeric
+    /// projections use the native lane container directly; only exported roots
+    /// keep their named aliases. Value enums also supply tag constants to readers.
+    /// Value-type targets retain their complete native input APIs.
     pub fn needs_input(&self, id: Id) -> bool {
-        !self.types.backend.language.supports_accessor_generation()
-            || self.encoders.contains(&id)
-            || self.types.nodes[id].is_value_enum()
+        if !self.types.backend.language.supports_accessor_generation() {
+            return true;
+        }
+        let node = &self.types.nodes[id];
+        if node.numeric_input.is_some()
+            && matches!(node.kind, Kind::Record(_))
+            && !self.types.exports.values().any(|&root| root == id)
+        {
+            return false;
+        }
+        self.encoders.contains(&id) || node.is_value_enum()
     }
 
     pub(super) fn new(types: TypeGraph, views: &ViewPlan) -> Self {
@@ -134,7 +143,7 @@ impl TypeGraph {
             .collect();
         for &id in views {
             let node = &self.nodes[id];
-            if node.options.generation.setters && node.options.values() && !self.has_payload(id) {
+            if node.options.value_generation().setters && !self.has_payload(id) {
                 pending.push(id);
             }
             let mut mutation_root = |value: Id| {
@@ -180,8 +189,7 @@ impl TypeGraph {
                     }
                 }
                 _ => {
-                    if node.options.values()
-                        && node.options.generation.setters
+                    if node.options.value_generation().setters
                         && let Some(mutation) = self.mutation(id)
                     {
                         mutation_root(mutation.value);

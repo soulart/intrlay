@@ -24,12 +24,18 @@ pub struct Mutation {
 impl TypeGraph {
     pub fn mutation(&self, id: Id) -> Option<Mutation> {
         let node = &self.nodes[id];
-        if !node.options.generation.setters {
-            return None;
-        }
-        if self
-            .folded_field(id)
-            .is_some_and(|field| !field.options.generation.setters)
+        // A child-view omission does not remove the parent's whole-value writer.
+        // Declaration-level hints and transparent field policies still apply.
+        if !node
+            .options
+            .replacement_setters
+            .unwrap_or(node.options.generation.setters)
+            || self.folded_field(id).is_some_and(|field| {
+                !field
+                    .options
+                    .replacement_setters
+                    .unwrap_or(field.options.generation.setters)
+            })
         {
             return None;
         }

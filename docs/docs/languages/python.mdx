@@ -106,7 +106,8 @@ loop is cheaper.
 
 ## Collections and optional values
 
-Numeric fixed arrays and explicit numeric projections expose memoryviews.
+Numeric sequences, fixed arrays, and explicit numeric projections expose
+memoryviews.
 Record collections offer indexed field helpers when the collection field has
 `project = "indexed"` or `"indexed_only"`, avoiding an element view for every
 access. Those helpers require indices within the logical

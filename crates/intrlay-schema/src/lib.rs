@@ -16,5 +16,5 @@ pub use names::NameCase;
 pub use registry::{Describe, Registry};
 pub use types::{
     ApiGeneration, Definition, DefinitionKind, Exposure, Field, Language, Scalar, Schema,
-    TargetOptions, Type, Variant,
+    TargetOptions, Type, Variant, ViewOptions,
 };

@@ -88,8 +88,9 @@ concurrent readers and writers in the application; Intrlay does not add locks.
 
 The `generate_getters`, `generate_setters`, and `create` annotations choose which
 APIs are emitted. They do not create a new readonly storage model. A returned
-TypedArray still has its normal mutation operations, and a child view keeps the
-API defined for its own type.
+TypedArray still has its normal mutation operations.
+Use [`view(...)`](../reference/annotations.mdx#child-view-configuration) to configure
+the accessors of returned child views.
 
 These options do not override Rust borrows, C++ const storage, C# readonly views,
 or Python immutable buffers. See [Schema annotations](../reference/annotations.mdx#accessor-generation-and-construction)

@@ -11,6 +11,39 @@ from intrlay import Some, zeroed, FloatView
 from bindings import ZeroedArraysInput, ZeroedArraysView
 from bindings import NumericItemsView
 from bindings import ContainersView, TupleRootView, TupleTreeView
+from bindings import NumericOwnersInput, NumericOwnersView
+
+numeric_owner_bytes = Path("target/compositions/numeric-owners.bin").read_bytes()
+numeric_owner_input: NumericOwnersInput = dict(
+    boxed=[11, 12], vector=[21, 22], rc=[31, 32], arc=[41, 42], optional=[51, 52],
+    empty=[], absent=None, nested=[[61, 62], []], fixed_slices=[[71, 72], []],
+    fixed=[81, 82], matrix=[[1., 2.], [3., 4.]], tuple=("tuple", [91, 92], 93),
+    flattened=(101, [102, 103]), optional_items=[111, None], structural=[121, 122],
+    rc_text="rc", arc_text="arc", rc_vector=[131, 132],
+)
+assert bytes(NumericOwnersView.create(numeric_owner_input).storage.bytes) == numeric_owner_bytes
+numeric_owner_backing = bytearray([0xa5]) * (len(numeric_owner_bytes) + 32)
+owners = NumericOwnersView.create_in_place(memoryview(numeric_owner_backing)[16:], numeric_owner_input)
+for owner_name, first in [("boxed", 11), ("vector", 21), ("rc", 31), ("arc", 41)]:
+    values = getattr(owners, owner_name)
+    assert isinstance(values, memoryview) and values.format == "I"
+    assert values is getattr(owners, owner_name) and values[0] == first
+    offset = getattr(owners, owner_name + "_byte_offset")
+    assert getattr(owners, owner_name + "_byte_length") == values.nbytes
+    values[0] += 1
+    assert owners.storage.u32[offset // 4] == first + 1
+assert len(owners.empty) == 0 and owners.empty_byte_length == 0
+assert owners.optional is not None and owners.optional[1] == 52 and owners.absent is None
+assert owners.nested[0][1] == 62 and len(owners.nested[1]) == 0
+assert owners.fixed_slices[0][1] == 72 and owners.fixed[1] == 82
+assert len(owners.matrix) == 2 and list(owners.matrix[1]) == [3, 4]
+assert owners.tuple.field_0 == "tuple" and owners.tuple.field_1[1] == 92
+assert owners.flattened_field_1_1 == 103
+assert owners.optional_items[0] == 111 and owners.optional_items[1] is None
+assert owners.structural[1] == 122
+assert owners.rc_text == "rc" and owners.arc_text == "arc" and owners.rc_vector[1] == 132
+assert all(value == 0xa5 for value in numeric_owner_backing[:16])
+assert all(value == 0xa5 for value in numeric_owner_backing[16 + len(numeric_owner_bytes):])
 
 containers = ContainersView.create(dict(
     label="containers 🦀", items=[(11, "first"), (22, "second")], pair=(7, 91),

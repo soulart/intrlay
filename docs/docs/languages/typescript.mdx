@@ -128,10 +128,9 @@ Composite field getters cache views. They reread presence bits and enum tags so
 that replacement through another view remains observable. Obtain an active child
 again after a variant or presence change; do not retain an inactive payload view.
 
-Numeric fixed arrays use TypedArrays by default. Common `project` annotations
-can also flatten homogeneous records or request indexed field access. This can
-avoid creating an element wrapper when reading a field in a tight loop.
-Numeric projections include any padding lanes in their representation.
+Numeric sequences and fixed arrays use TypedArrays by default.
+[Projections](../reference/annotations.mdx#projections) can expose records as
+numeric lanes or direct field accessors. Numeric projections include padding lanes.
 
 `i64` and `u64` scalar values use JavaScript `bigint`. Generated APIs retain
 TypeScript types; choosing a numeric projection is an explicit request to expose
