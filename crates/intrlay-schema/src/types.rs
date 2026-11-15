@@ -62,6 +62,8 @@ pub enum Type {
     },
     /// A relative offset and element count followed by fixed-stride element headers.
     Sequence(Box<Self>),
+    /// Declaration-ordered, heterogeneous inline fields, addressed by position.
+    Tuple(Vec<Self>),
     /// A relative offset and UTF-8 byte count.
     String,
     /// A presence byte and an aligned, fixed-size inline value header.

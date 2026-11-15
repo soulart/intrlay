@@ -38,6 +38,7 @@ internal sealed class Schema
                     Create = data.Named("Create", false), HasPayload = data.Named("HasPayload", false),
                     Encode = data.Named("Encode", false), Native = data.Named("Native", false),
                     NativeLayout = data.Named("NativeLayout", false),
+                    Tuple = data.Named("Tuple", false),
                     FullyWritten = data.Named("FullyWritten", false),
                     Zeroable = data.Named("Zeroable", false),
                     ViewName = data.Named("ViewName", ""), MeasureName = data.Named("MeasureName", ""),
@@ -92,7 +93,7 @@ internal sealed class Node
     public string SpanName = "", ArrayName = "", NativeReadName = "";
     public string SpanInputName = "";
     public string SourceInputName = "";
-    public bool Read, Write, Create, HasPayload, Encode, Native, NativeLayout, FullyWritten, Zeroable;
+    public bool Read, Write, Create, HasPayload, Encode, Native, NativeLayout, FullyWritten, Zeroable, Tuple;
     public readonly List<Field> Fields = new();
     public readonly List<Variant> Variants = new();
     public bool ValueEnum => Kind == "Enum" && Fields.Count == 0;

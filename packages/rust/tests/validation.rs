@@ -287,6 +287,20 @@ fn failed_fixed_array_decode_drops_its_initialized_prefix() {
     DROPS.store(0, Ordering::Relaxed);
     assert!(<[Dropped; 3]>::decode(&[1, 0, 2], 0).is_err());
     assert_eq!(DROPS.load(Ordering::Relaxed), 2);
+    DROPS.store(0, Ordering::Relaxed);
+    assert!(<(Dropped, Dropped, Dropped)>::decode(&[1, 0, 2], 0).is_err());
+    assert_eq!(DROPS.load(Ordering::Relaxed), 2);
+    // A valid sequence header followed by an invalid boolean in the third slot.
+    let bytes = [8, 0, 0, 0, 3, 0, 0, 0, 1, 0, 2];
+    for decode in [
+        |bytes: &[u8]| <Box<[Dropped]>>::decode(bytes, 0).map(|_| ()),
+        |bytes: &[u8]| intrlay::adapters::Rc::<[Dropped]>::decode(bytes, 0).map(|_| ()),
+        |bytes: &[u8]| intrlay::adapters::Arc::<[Dropped]>::decode(bytes, 0).map(|_| ()),
+    ] {
+        DROPS.store(0, Ordering::Relaxed);
+        assert!(decode(&bytes).is_err());
+        assert_eq!(DROPS.load(Ordering::Relaxed), 2);
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Intrlay)]
@@ -518,6 +532,10 @@ mod constructor_unwind {
             Value { id: 2 },
         ])?;
         check::<Vec<Codec>>(bytes.as_ref());
+        check::<Box<[Codec]>>(bytes.as_ref());
+        check::<intrlay::adapters::Rc<[Codec]>>(bytes.as_ref());
+        check::<intrlay::adapters::Arc<[Codec]>>(bytes.as_ref());
+        check::<(Codec, Codec, Codec)>(&bytes.as_ref()[8..]);
         // The sequence starts at byte 8; its headers also form a fixed array.
         check::<[Codec; 3]>(&bytes.as_ref()[8..]);
         #[cfg(feature = "smallvec")]

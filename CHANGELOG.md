@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.1.6]
+
+- Support Rust `Box<[T]>` and `Box<str>` using the existing sequence and string
+  representations, including borrowed encoding inputs and nested containers.
+- Support Rust tuples of up to twelve elements and C++ `std::tuple` schemas.
+  Fields use positional wire order independently of the native tuple layout.
+  Rust tuple views expose `field::<I>()` and `field_mut::<I>()` accessors.
+- Generate native tuple inputs across all six targets: Rust and Python tuples,
+  C++ `std::tuple`, C# `ValueTuple`, TypeScript readonly tuples, and Dart records.
+  Views retain field access into the encoded buffer. TypeScript, Python, and Dart
+  support numeric and flattened tuple projections, plus indexed tuple collections.
+- Add explicit Rust `adapters::Rc<C>` and `adapters::Arc<C>` codecs for sized
+  values, slices, and strings. Add the opt-in C++
+  `<intrlay/adapters/shared_ptr.hpp>` adapter. Each occurrence is serialized
+  independently; shared identity and reference counts are not encoded, and cyclic
+  inputs are unsupported.
+- Reject C++ tuple inputs with mismatched element counts at compile time during
+  construction and replacement, including nested tuples and variant payloads.
+
+Regenerate bindings and use matching runtime packages for the new types and
+adapters. Existing schema wire layouts are unchanged.
+
 ## [0.1.5]
 
 - Distinguish Dart WebAssembly from JavaScript in the runtime and generated

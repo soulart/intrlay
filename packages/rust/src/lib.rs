@@ -22,11 +22,13 @@ pub mod adapters;
 mod buffer;
 mod builtins;
 mod codec;
+mod containers;
 mod decode;
 mod exports;
 mod initialization;
 mod sequence;
 mod source;
+mod tuple;
 mod validation;
 mod value_view;
 
@@ -42,6 +44,7 @@ pub use intrlay_layout as layout;
 pub use intrlay_schema as schema;
 pub use sequence::{SequenceMut, SequenceView};
 pub use source::{BoxInput, EncodeSource, SequenceInput, ValueSource, Zeroed, ZeroedSequence};
+pub use tuple::TupleField;
 pub use validation::{StableBytes, Validator};
 pub use value_view::ValueView;
 

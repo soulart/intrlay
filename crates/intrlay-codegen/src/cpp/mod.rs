@@ -125,7 +125,7 @@ fn input_declarations(
             continue;
         }
         match &node.kind {
-            Kind::Record(fields) => {
+            Kind::Record(fields) if !node.tuple => {
                 input_forward(output, plan, context, &node.input_name(), fields)?;
             }
             Kind::Enum(variants) => {
@@ -198,7 +198,10 @@ fn export_aliases(
             || !matches!(plan.nodes[*id].kind, Kind::Record(_) | Kind::Enum(_))
         {
             let node = &plan.nodes[*id];
-            if matches!(node.kind, Kind::Record(_) | Kind::Enum(_)) && !node.is_value_enum() {
+            if matches!(node.kind, Kind::Record(_) | Kind::Enum(_))
+                && !node.is_value_enum()
+                && !node.tuple
+            {
                 writeln!(
                     output,
                     "template<class... Fields>\nusing {alias}Input = {}<Fields...>;",
@@ -237,14 +240,24 @@ fn input(
             for field in fields {
                 input_dependency(output, plan, context, field.ty, done)?;
             }
-            input_record(
-                output,
-                plan,
-                context,
-                &plan.input_name(id),
-                fields,
-                &node.docs,
-            )?;
+            if node.tuple {
+                documentation::write(output, &node.docs, "")?;
+                writeln!(
+                    output,
+                    "using {} = {};\n",
+                    node.input_name(),
+                    input_type(plan, context, id)
+                )?;
+            } else {
+                input_record(
+                    output,
+                    plan,
+                    context,
+                    &plan.input_name(id),
+                    fields,
+                    &node.docs,
+                )?;
+            }
         }
         Kind::Enum(variants) => {
             if node.is_value_enum() {
@@ -692,6 +705,14 @@ fn input_type(plan: &TypeGraph, context: &Context, id: Id) -> String {
         Kind::Scalar(scalar) => scalar_type(*scalar).into(),
         Kind::Unit => "::std::monostate".into(),
         Kind::String => "::std::string".into(),
+        Kind::Record(fields) if plan.nodes[id].tuple => {
+            let fields = fields
+                .iter()
+                .map(|field| input_type(plan, context, field.ty))
+                .collect::<Vec<_>>()
+                .join(", ");
+            format!("::std::tuple<{fields}>")
+        }
         Kind::Record(_) | Kind::Enum(_) => format!("{}<>", context.qualified(&plan.input_name(id))),
         Kind::Sequence(element) => {
             format!("::std::vector<{}>", input_type(plan, context, *element))

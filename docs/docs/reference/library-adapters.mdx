@@ -7,6 +7,41 @@ Generated consumers do not depend on the source library.
 
 ## Rust
 
+### Reference-counted owners
+
+`adapters::Rc<C>` and `adapters::Arc<C>` explicitly serialize the contents of a
+reference-counted owner. They require no Cargo feature. Select them with `with`:
+
+```rust
+use std::{rc::Rc, sync::Arc};
+use intrlay::{Intrlay, adapters};
+
+#[derive(Intrlay)]
+struct Message {
+    #[intrlay(with = adapters::Rc<u32>)]
+    value: Rc<u32>,
+    #[intrlay(with = adapters::Arc<[u32]>)]
+    samples: Arc<[u32]>,
+    #[intrlay(with = adapters::Arc<str>)]
+    title: Arc<str>,
+}
+```
+
+Both adapters support sized pointees, slices, and strings. Sized pointees use the
+`Box<C>` representation; slices use `Vec<C>` and strings use `String`. The codec
+parameter can itself be an adapter, and wrappers such as `Vec<adapters::Arc<C>>`
+apply the policy to every element. Borrowed inputs do not need to construct an
+`Rc` or `Arc`: use `BoxInput` for a sized pointee, a slice for elements, or `str`
+for text.
+
+Selecting this adapter means **each occurrence is serialized independently**.
+Two fields sharing one allocation produce two wire values; decoding produces
+independent owners. Reference counts and pointer identity are not encoded.
+Cycles and weak pointers are unsupported. Contents must stay stable during
+measurement and writing; the adapter does not provide synchronization.
+
+### External libraries
+
 Enable only the adapters your schema needs:
 
 ```toml
@@ -151,7 +186,17 @@ another version can pass `as_str()` or `as_slice()` to ordinary string or sequen
 schemas without using a library-specific adapter. These adapters access public
 contents and do not depend on the containers' native memory layout.
 
-## C++ / GLM
+## C++
+
+### Shared owners
+
+Include `<intrlay/adapters/shared_ptr.hpp>` in the schema and encoder translation
+units to serialize `std::shared_ptr<T>` using the `std::unique_ptr<T>` wire
+representation. Each occurrence is copied independently; shared identity is not
+preserved, and cyclic inputs are unsupported. See the [C++ guide](../languages/cpp.mdx#shared-owners)
+for pointer requirements and borrowed inputs.
+
+### GLM
 
 Include the adapter in the schema header and in code that passes GLM values to
 generated encoders. Supply GLM's include path to both the schema extractor and

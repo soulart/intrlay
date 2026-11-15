@@ -51,7 +51,7 @@ internal sealed partial class Emitter
             switch (node.Kind)
             {
                 case "Record":
-                    foreach (var child in node.Fields) pending.Push((child.Type, entry.Wrapped, false));
+                    foreach (var child in node.Fields) pending.Push((child.Type, entry.Wrapped || node.Tuple, false));
                     break;
                 case "Sequence":
                     pending.Push((node.Value, entry.Wrapped || entry.Sequence, true));
@@ -73,6 +73,7 @@ internal sealed partial class Emitter
         {
             "Sequence" => true,
             "Optional" or "Array" => ContainsInlineSequence(node.Value),
+            "Record" when node.Tuple => node.Fields.Any(field => ContainsInlineSequence(field.Type)),
             _ => false,
         };
     }
@@ -82,6 +83,7 @@ internal sealed partial class Emitter
         var node = Node(id);
         return node.Kind switch
         {
+            "Record" when node.Tuple => TupleType(node, field => RecordStorageType(field.Type)),
             "Sequence" => "global::Intrlay.MemorySlot",
             "Array" => $"{node.ArrayName}<{RecordStorageType(node.Value)}>",
             "Optional" => Node(node.Value).Kind switch
@@ -118,6 +120,18 @@ internal sealed partial class Emitter
         if (node.Kind == "Sequence")
             return writing ? $"global::Intrlay.MemorySlot.From({source})" : $"{source}.As<{Input(node.Value)}>()";
         if (!ContainsInlineSequence(id)) return source;
+
+        if (node.Tuple)
+        {
+            // Tuple storage can erase an enclosing generic value-type cycle too.
+            // Convert only inline fields; collection owners are retained in MemorySlot.
+            var values = new List<string>();
+            foreach (var field in node.Fields)
+                values.Add(ConvertRecordStorage(field.Type, RecordMember(node, field, source), writing, ref next));
+            if (node.Fields.Count == 1)
+                return $"new {(writing ? RecordStorageType(id) : Input(id))}({values[0]})";
+            return "(" + string.Join(", ", values) + ")";
+        }
 
         int number = next++;
         string result = "result" + number;

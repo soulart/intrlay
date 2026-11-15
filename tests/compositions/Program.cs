@@ -6,6 +6,29 @@ using IntrlayGenerated.Schema;
 
 static void Check(bool value) { if (!value) throw new Exception("composition regression"); }
 
+var containers = ContainersView.Create(new ContainersInput(
+    "containers 🦀", new (uint, string)[] { (11, "first"), (22, "second") }, ((byte)7, 91ul),
+    (new ValueTuple<uint>(53), ("nested", true)), (1u, 2u, 3u, 4u, 5u, 6u, 7u, 8u, 9u),
+    new Intrlay.Box<uint>(42), new Intrlay.Box<uint>(42), new uint[] { 3, 5, 8 }, "shared"));
+Check(containers.Bytes.Span.SequenceEqual(File.ReadAllBytes("target/compositions/containers.bin")));
+Check(containers.Items[1].Field1 == "second");
+Check(containers.Nested.Field0.Field0 == 53 && containers.Wide.Field8 == 9);
+Check(TupleRootView.Create((17u, "root")).Field1 == "root");
+var tupleTree = TupleTreeView.Create(new TupleTreeInput(new ValueTuple<uint>(1),
+    new ValueTuple<ReadOnlyMemory<TupleTreeInput>>(new[] {
+        new TupleTreeInput(new ValueTuple<uint>(2), new ValueTuple<ReadOnlyMemory<TupleTreeInput>>(ReadOnlyMemory<TupleTreeInput>.Empty))
+    })));
+Check(tupleTree.Children.Field0[0].Value.Field0 == 2);
+var tupleChoice = TupleChoiceInput.FromValue((19u, "choice"));
+Check(tupleChoice.Value.Field0.Field0 == 19 && tupleChoice.Value.Field0.Field1 == "choice");
+Check(TupleChoiceView.Create(tupleChoice).ValueField0!.Value.Field0 == 19);
+var singleChoice = TupleChoiceInput.FromSingle(new ValueTuple<uint>(23));
+Check(singleChoice.Single.Field0.Item1 == 23);
+Check(TupleChoiceView.Create(singleChoice).SingleField0!.Value.Field0 == 23);
+var tupleSources = new IntrlayTuple2OfSequenceOfU32AndU32Input<Intrlay.ZeroedSequence<uint>>(new(3), 7u);
+Check(TupleSourcesView.Create(tupleSources).Field0[2] == 0);
+Check(TupleRootView.Create(new IntrlayTuple2OfU32AndStringSpanInput(17u, "root".AsSpan())).Field1 == "root");
+
 var zeroInput = ZeroedArraysInput.FromSources(73, new Intrlay.ZeroedSequence<ZeroedPointInput>(3),
     new Intrlay.ZeroedSequence<bool>(4), new Intrlay.ZeroedArray<FixedArray2<float>>(),
     new IntrlayOptionalArray2OfU32Input<Intrlay.ZeroedArray<uint>>(default),

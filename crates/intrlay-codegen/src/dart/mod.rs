@@ -129,6 +129,21 @@ fn input(output: &mut String, plan: &TypeGraph, node: &Node) -> Result<(), Gener
         return Ok(());
     }
     match &node.kind {
+        Kind::Record(fields) if node.tuple => {
+            let elements = fields
+                .iter()
+                .map(|field| input_type(plan, field.ty))
+                .collect::<Vec<_>>()
+                .join(", ");
+            let comma = if fields.len() == 1 { "," } else { "" };
+            writeln!(output)?;
+            documentation::write(output, &node.docs, "")?;
+            writeln!(
+                output,
+                "typedef {} = ({elements}{comma});",
+                node.input_name()
+            )?;
+        }
         Kind::Record(fields) => {
             input_record(output, plan, &node.input_name(), fields, "", &node.docs)?;
         }
@@ -1049,6 +1064,10 @@ fn numeric_type(scalar: Scalar) -> String {
 fn input_member(plan: &TypeGraph, node: &Node, field: &Field) -> String {
     if plan.folded_node(node).is_some() {
         "value".into()
+    } else if node.tuple
+        && let Some(index) = field.position
+    {
+        format!("value.${}", index + 1)
     } else {
         format!("value.{}", field.name)
     }

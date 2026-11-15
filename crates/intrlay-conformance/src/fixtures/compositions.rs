@@ -69,6 +69,62 @@ struct WrappedScalars {
 }
 
 #[derive(Intrlay)]
+struct Containers {
+    label: Box<str>,
+    items: Box<[(u32, String)]>,
+    pair: (u8, u64),
+    nested: ((u32,), Option<(String, bool)>),
+    wide: (u32, u32, u32, u32, u32, u32, u32, u32, u32),
+    #[intrlay(with = intrlay::adapters::Rc<u32>)]
+    first: std::rc::Rc<u32>,
+    #[intrlay(with = intrlay::adapters::Rc<u32>)]
+    second: std::rc::Rc<u32>,
+    #[intrlay(with = intrlay::adapters::Arc<[u32]>)]
+    samples: std::sync::Arc<[u32]>,
+    #[intrlay(with = intrlay::adapters::Arc<str>)]
+    note: std::sync::Arc<str>,
+}
+
+#[derive(Intrlay)]
+enum TupleChoice {
+    Value((u32, String)),
+    Single((u32,)),
+}
+
+#[derive(Intrlay)]
+struct TupleTree {
+    value: (u32,),
+    children: (Vec<TupleTree>,),
+}
+
+fn containers(fixtures: &mut Fixtures, registry: &mut Registry) -> Result<(), Box<dyn Error>> {
+    registry.export::<Containers>("Containers");
+    registry.export::<TupleChoice>("TupleChoice");
+    registry.export::<TupleTree>("TupleTree");
+    registry.export::<(u32, String)>("TupleRoot");
+    registry.export::<(Vec<u32>, u32)>("TupleSources");
+    let shared = std::rc::Rc::new(42);
+    let value = Containers {
+        label: "containers 🦀".into(),
+        items: vec![(11, "first".into()), (22, "second".into())].into(),
+        pair: (7, 91),
+        nested: ((53,), Some(("nested".into(), true))),
+        wide: (1, 2, 3, 4, 5, 6, 7, 8, 9),
+        first: shared.clone(),
+        second: shared,
+        samples: [3, 5, 8].as_slice().into(),
+        note: "shared".into(),
+    };
+    let bytes = intrlay::create::<Containers>(&value)?;
+    fixtures.insert("compositions/containers.bin", bytes.as_ref())?;
+    fixtures.insert(
+        "compositions/containers-data.dart",
+        format!("const containerBytes = {:?};\n", bytes.as_ref()),
+    )?;
+    Ok(())
+}
+
+#[derive(Intrlay)]
 enum CachedChoice {
     Empty,
     Value { child: Option<Shared> },
@@ -581,6 +637,7 @@ fn generate_composition_fixtures(fixtures: &mut Fixtures) -> Result<(), Box<dyn 
     registry.export::<Vec<()>>("UnitSequence");
     registry.export::<NumericItems>("NumericItems");
     zeroed_arrays(fixtures, &mut registry)?;
+    containers(fixtures, &mut registry)?;
     let schema = registry.finish();
     let native_value = ManagedUnion::Record(ManagedPayload {
         label: "shared".into(),

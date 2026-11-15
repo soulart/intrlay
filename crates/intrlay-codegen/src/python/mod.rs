@@ -194,6 +194,23 @@ fn input(
         return Ok(());
     }
     match &node.kind {
+        Kind::Record(fields) if node.tuple => {
+            let elements = if fields.is_empty() {
+                "()".into()
+            } else {
+                fields
+                    .iter()
+                    .map(|field| input_type(plan, field.ty))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            };
+            writeln!(
+                output,
+                "\n\ntype {} = _builtins.tuple[{elements}]",
+                node.input_name()
+            )?;
+            documentation::write(output, &node.docs, "")?;
+        }
         Kind::Record(fields) => {
             input_record(output, plan, &node.input_name(), fields, None, &node.docs)?;
         }
@@ -1116,6 +1133,10 @@ fn numeric_type(scalar: Scalar) -> String {
 fn input_member(plan: &TypeGraph, node: &Node, field: &Field) -> String {
     if plan.folded_node(node).is_some() {
         "value".into()
+    } else if node.tuple
+        && let Some(index) = field.position
+    {
+        format!("value[{index}]")
     } else {
         format!("value['{}']", field.name)
     }

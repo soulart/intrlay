@@ -254,7 +254,7 @@ ignore this option.
 | Option | API |
 | --- | --- |
 | `project = "fields"` | Structural views with named fields and typed elements |
-| `project = "flatten"` | Direct accessors for the leaves of inline records and fixed arrays |
+| `project = "flatten"` | Direct accessors for the leaves of inline records, tuples, and fixed arrays |
 | `project = "indexed"` | Record or variant-field access by element index alongside ordinary element access |
 | `project = "indexed_only"` | Indexed field access without a whole-element getter |
 | `project = "f32"` | Packed numeric input and view over all scalar lanes and padding |
@@ -324,6 +324,7 @@ An explicit numeric `project` also selects packed construction input: TypeScript
 uses the corresponding TypedArray, Python uses a native-format numeric memoryview,
 and Dart uses flat scalar lists through its existing initialization wrappers.
 Without the explicit annotation, fixed-array inputs keep their structural shape.
+The same explicit projection rule applies to homogeneous numeric tuples.
 For the `Frame` above:
 
 ```typescript
@@ -372,6 +373,7 @@ are omitted with `create = false`.
 `project = "flatten"` exposes inline leaves directly on the containing View in
 TypeScript, Python, and Dart. Unlike numeric projection, leaves may have different
 types. It preserves field padding, wire layout, and the original nested Input shape.
+Tuples participate as positional records and retain their native tuple inputs.
 
 ```rust
 #[derive(intrlay::Intrlay)]
@@ -415,7 +417,7 @@ typed element views and do not generate these field helpers.
 `project = "indexed"` requests ordinary element access alongside these helpers.
 `project = "indexed_only"` requests the helpers without a whole-element getter
 (`get(index)` in TypeScript and indexing in Python/Dart). Both projections apply to fixed or variable
-arrays of non-transparent records or payload enums. Scalars, payload-free enums,
+arrays of non-transparent records, tuples, or payload enums. Scalars, payload-free enums,
 and optional elements have no fields to expose, so applying either projection to
 them is an error.
 Fixed-shape element replacement remains available

@@ -72,7 +72,7 @@ control over the generated API in its six targets.
 | Independently upgrade readers and writers | Coordinate layout changes in the application; buffers do not negotiate schemas or preserve unknown fields. |
 | Read bytes from an untrusted producer | Rust and C++ provide checked view constructors. Other targets assume valid encodings; schema selection and lifetime remain application responsibilities. |
 | Grow a string or collection through a view | Construct a new encoding, optionally reusing storage. Views do not relocate payloads or resize collections. |
-| Preserve shared object identity | Owned trees are supported; shared references and arbitrary object graphs are outside the data model. |
+| Preserve shared object identity | Adapters serialize shared owners as independent tree values; shared identity and cycles are unsupported. |
 | Minimize transmitted bytes | Fixed-width values, reserved inline storage, and alignment padding take space. There is no built-in compression or omission of default-valued fields. |
 | Encode a value beyond the supported `u32` address space | Split the data at the schema or application level. Intrlay does not segment an oversized encoding. |
 | Generate for another language | The current targets are Rust, C++, TypeScript, C#, Python, and Dart. |

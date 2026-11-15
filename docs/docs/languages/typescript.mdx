@@ -7,6 +7,11 @@ consumer. The same views work with browser buffers.
 
 ## Native inputs and buffer views
 
+By default, tuple schemas use readonly tuple inputs, such as `readonly [number, string]`.
+Pass `[42, "Alice"]` to construct that value. Its view exposes `field0` and `field1`
+without allocating a JavaScript array on each read. Ordinary structs retain
+named object inputs.
+
 Generate the [tutorial schema](../tutorial.mdx#1-define-the-message) with
 `--language typescript --module-name drawing --output generated/drawing.ts`.
 Construction takes structural input objects:

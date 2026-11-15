@@ -5,12 +5,26 @@ import '../../target/compositions/value-enums.dart' as enums;
 import '../../target/compositions/projected-enums-data.dart';
 import '../../target/compositions/nested-enums-data.dart';
 import 'dart:typed_data';
+import '../../target/compositions/containers-data.dart';
 
 void check(bool value) { if (!value) throw StateError('composition regression'); }
 
 Float32List padded(double value) => Float32List.fromList([value, 0, 0, 0]);
 
 void main() {
+  final containers = ContainersView.create(ContainersInput(
+    label: 'containers 🦀', items: [(11, 'first'), (22, 'second')], pair: (7, 91),
+    nested: ((53,), ('nested', true)), wide: (1, 2, 3, 4, 5, 6, 7, 8, 9),
+    first: 42, second: 42, samples: intrlay.SequenceInput.from(Uint32List.fromList([3, 5, 8])), note: 'shared'));
+  check(containers.storage.bytes.length == containerBytes.length);
+  for (var i = 0; i < containerBytes.length; ++i) { check(containers.storage.bytes[i] == containerBytes[i]); }
+  check(containers.items[1].field1 == 'second');
+  check(containers.nested.field0.field0 == 53 && containers.wide.field8 == 9);
+  containers.pair.field0 = 8;
+  check(containers.pair.field0 == 8);
+  check(TupleRootView.create((17, 'root')).field1 == 'root');
+  final tupleTree = TupleTreeView.create(TupleTreeInput(value: (1,), children: ([TupleTreeInput(value: (2,), children: (<TupleTreeInput>[],))],)));
+  check(tupleTree.children.field0[0].value.field0 == 2);
   final zeroInput = ZeroedArraysInput(id: 73,
     points: intrlay.SequenceInput.zeroed(3), flags: intrlay.SequenceInput.zeroed(4),
     matrix: const intrlay.FixedArrayInput.zeroed(), present: const intrlay.FixedArrayInput.zeroed(),

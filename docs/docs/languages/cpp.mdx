@@ -70,7 +70,16 @@ not require a Clang runtime in the application. Compilation database support and
 libclang setup are documented in [Code generation](../reference/code-generation.mdx#c-input).
 
 The frontend supports records and containers such as `std::array`, `std::vector`,
-`std::optional`, `std::variant`, `std::string`, and `std::unique_ptr` trees.
+`std::optional`, `std::variant`, `std::tuple`, `std::string`, and `std::unique_ptr` trees.
+
+Tuple fields use positional wire order, independently of the standard library's
+object layout. Generated tuple Input aliases use `std::tuple`. A native tuple
+with borrowed field sources can also be passed directly to `create`; the
+encoder reads its elements with `std::get<I>`. Views expose `field_0()`,
+`field_1()`, and so on. Nested tuples and tuples containing dynamic values use
+the same rules. Input tuples must have exactly the schema's number of elements
+at every nesting level; mismatches are rejected at compile time.
+
 Annotate concrete aliases to export template specializations. An alias does not
 create a second independently configurable identity for the same type.
 
@@ -329,7 +338,7 @@ the original object. For private fields, write a specialization with a public
 schema record and a `source` aggregate containing the corresponding fields.
 
 Adapters apply recursively through records, arrays, sequences, optionals, boxes,
-and variant payloads. A custom collection adapter can use `std::vector<T>` as
+tuples, and variant payloads. A custom collection adapter can use `std::vector<T>` as
 its `schema_type` and return `std::span<const T>` from `source`; each element's
 adapter still applies. A returned source may itself have an adapter. Cyclic
 source mappings are rejected by `EncodeSourceFor`.
@@ -350,6 +359,21 @@ returns the exact, unchanged original object as `const T&`. Size, padding, field
 offsets, and nested layouts must still satisfy the codec's separate proof.
 Value-transforming adapters leave this flag absent, so bulk copies cannot skip
 their conversions.
+
+### Shared owners
+
+Include `<intrlay/adapters/shared_ptr.hpp>` in the schema and encoder translation
+units to opt `std::shared_ptr<T>` into independent value serialization. It uses
+the same indirect wire representation as `std::unique_ptr<T>` and borrows the
+pointee during encoding. Each occurrence is copied separately, even when two
+fields share the same allocation. The generated inputs and views do not retain
+reference counts or shared identity.
+
+Like a `unique_ptr<T>` encoding source, the pointer must be non-null; use
+`std::optional` to represent absence. Cycles and `weak_ptr` are unsupported.
+Array pointers such as `unique_ptr<T[]>` and `shared_ptr<T[]>` do not carry a
+length and are not sequence schemas. When the caller knows the extent, a
+`std::span` can supply input to an ordinary sequence schema.
 
 ## Caller-provided storage
 

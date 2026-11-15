@@ -372,7 +372,7 @@ internal sealed partial class Emitter
                 }
                 break;
             case "Record":
-                foreach (var (field, child) in part.Fields) NativeWrite(child, $"{value}.@{field.Name}", storage, locals);
+                foreach (var (field, child) in part.Fields) NativeWrite(child, RecordMember(node, field, value), storage, locals);
                 break;
             case "Optional":
                 if (part.Slot.Length == 0) NativeWrite(part.Child!, value, storage, locals);
@@ -415,7 +415,7 @@ internal sealed partial class Emitter
                 Close();
                 return array;
             case "Record":
-                return $"new {node.Name}({string.Join(", ", part.Fields.Select(field => NativeRead(field.Value, storage, locals)))})";
+                return ConstructRecord(node, string.Join(", ", part.Fields.Select(field => NativeRead(field.Value, storage, locals))));
             case "Optional":
                 if (part.Slot.Length == 0) return NativeRead(part.Child!, storage, locals);
                 var optional = locals.Allocate("optional");

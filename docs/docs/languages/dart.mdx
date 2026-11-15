@@ -4,6 +4,10 @@ Install with `dart pub add intrlay`, or `flutter pub add intrlay` in a Flutter
 project. The runtime supports Dart 3.3 and later. Generate bindings with
 `--language dart` and include them in your Dart package.
 
+By default, tuple schemas use positional Dart record inputs, such as `(int, String)`
+with the value `(42, 'Alice')`. Their views retain `field0`, `field1`, and other
+field accessors into the buffer. A single-element record uses `(42,)`.
+
 ## Construct and read a drawing
 
 Generate the [tutorial schema](../tutorial.mdx#1-define-the-message) with

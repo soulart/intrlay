@@ -162,7 +162,9 @@ fn binding_names(output: &mut String) -> Result<(), GenerateError> {
 
 fn input(output: &mut String, node: &Node) -> Result<(), GenerateError> {
     match &node.kind {
-        Kind::Record(_) => native_declaration(output, &node.input_name(), &node.docs)?,
+        Kind::Record(_) if !node.tuple => {
+            native_declaration(output, &node.input_name(), &node.docs)?;
+        }
         Kind::Enum(variants) => {
             if node.is_value_enum() {
                 documentation::write(output, &node.docs, "")?;
@@ -292,6 +294,9 @@ fn type_metadata(
         Kind::Boxed(value) => ("Boxed".into(), Some(value), 0),
     };
     let mut attributes = Vec::new();
+    if node.tuple {
+        attributes.push("Tuple = true".into());
+    }
     if let Some(child) = child {
         attributes.push(format!("Value = {child}"));
     }

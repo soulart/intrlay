@@ -11,6 +11,10 @@ Records preserve field order. Before each field, padding advances the offset to
 that field's alignment. The record's final size is rounded to its alignment.
 Supported explicit alignment annotations participate in this calculation.
 
+Tuples follow the same rule with positional fields. Rust `(A, B)` and C++
+`std::tuple<A, B>` therefore share a representation, independently of how their
+native compilers arrange tuple members.
+
 For a record with fields `a: u8`, `b: f32`, and `c: u16`, with no extra alignment:
 
 ```text

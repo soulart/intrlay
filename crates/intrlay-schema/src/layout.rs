@@ -150,6 +150,13 @@ impl<'a> Layouts<'a> {
             Type::Optional(value) => {
                 Layout::tagged(Layout::new(1, 1), self.resolve(value, visiting)?)
             }
+            Type::Tuple(fields) => {
+                let layouts = fields
+                    .iter()
+                    .map(|field| self.resolve(field, visiting))
+                    .collect::<Result<Vec<_>, _>>()?;
+                record(&layouts, 1)
+            }
             Type::Named(identity) => {
                 if let Some(layout) = self.headers.get(identity) {
                     return Ok(*layout);
@@ -259,6 +266,11 @@ impl<'a> Layouts<'a> {
         }
         let mut alignment = self.of(ty)?.alignment();
         match ty {
+            Type::Tuple(fields) => {
+                for field in fields {
+                    alignment = alignment.max(self.alignment_inner(field, visiting)?);
+                }
+            }
             Type::Array { element, .. }
             | Type::Sequence(element)
             | Type::Boxed(element)

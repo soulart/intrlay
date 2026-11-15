@@ -16,7 +16,7 @@ internal sealed partial class Emitter
                 Line("cursor.Reserve(global::System.Text.Encoding.UTF8.GetByteCount(value), 1);");
                 break;
             case "Record":
-                MeasureFields(node.Fields, "value");
+                MeasureFields(node.Fields, "value", singleTuple: node.Tuple && node.Fields.Count == 1 && !spanInput);
                 break;
             case "Enum":
                 Open($"switch (value.{Name("tag")})");
@@ -92,7 +92,7 @@ internal sealed partial class Emitter
                 Line("global::System.Text.Encoding.UTF8.GetBytes(value, buffer.Slice(payloadOffset, length));");
                 break;
             case "Record":
-                WriteFields(node, node.Fields, "value");
+                WriteFields(node, node.Fields, "value", singleTuple: node.Tuple && node.Fields.Count == 1 && !spanInput);
                 break;
             case "Enum":
                 if (node.ValueEnum)
@@ -148,19 +148,19 @@ internal sealed partial class Emitter
         if (!spanInput && SpanCodec(node)) Write(node, spanInput: true);
     }
 
-    private void MeasureFields(IEnumerable<Field> fields, string owner, bool generic = false)
+    private void MeasureFields(IEnumerable<Field> fields, string owner, bool generic = false, bool singleTuple = false)
     {
         foreach (var field in fields.Where(field => Node(field.Type).HasPayload))
-            SourceMeasure(Node(field.Type), $"{owner}.@{field.Name}", generic && CustomSource(Node(field.Type)));
+            SourceMeasure(Node(field.Type), $"{owner}.@{(singleTuple ? "Item1" : field.Name)}", generic && CustomSource(Node(field.Type)));
     }
 
-    private void WriteFields(Node node, IEnumerable<Field> fields, string owner, bool generic = false)
+    private void WriteFields(Node node, IEnumerable<Field> fields, string owner, bool generic = false, bool singleTuple = false)
     {
         Line($"var header = buffer.Slice(offset, {node.Size});");
         foreach (var field in fields)
         {
             var member = Node(field.Type);
-            string value = $"{owner}.@{field.Name}";
+            string value = $"{owner}.@{(singleTuple ? "Item1" : field.Name)}";
             if (member.Scalar) Line(Store(member, "header", field.Offset.ToString(), value));
             else SourceWrite(member, member.HasPayload ? "buffer" : "header",
                 member.HasPayload ? $"offset + {field.Offset}" : field.Offset.ToString(), value,

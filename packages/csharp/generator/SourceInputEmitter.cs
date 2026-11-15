@@ -33,6 +33,15 @@ internal sealed partial class Emitter
     {
         foreach (var node in schema.Nodes.Values.Where(node => node.Native && node.Encode && CustomSource(node)))
         {
+            if (node.Tuple)
+            {
+                // System.ValueTuple is the canonical input. Only customized
+                // field sources need a generated IEncodeInput implementation.
+                SourceRecord(node, node.SourceInputName, node.Fields, scoped: false);
+                if (node.SpanInputName.Length != 0)
+                    SourceRecord(node, node.SpanInputName, node.Fields, scoped: true);
+                continue;
+            }
             if (node.Kind is "Record" or "Enum")
             {
                 // Canonical input storage and its existing overloads stay unchanged.

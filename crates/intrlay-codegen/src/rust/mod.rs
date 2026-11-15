@@ -4,7 +4,7 @@ use intrlay_schema::Scalar;
 
 use crate::{
     GenerateError,
-    plan::{GenerationPlan, Id, Kind, Options, TypeGraph},
+    plan::{Field, GenerationPlan, Id, Kind, Options, TypeGraph},
 };
 
 mod api;
@@ -42,8 +42,21 @@ pub fn generate(
     output.push_str(
         "//! Construction and mutation inputs, including nested views, must not overlap the bytes being written.\n//! Writers rely on this caller precondition; no runtime overlap check is performed.\n\n",
     );
+    let mut buffer = String::from("B");
+    while plan.exports.contains_key(&buffer)
+        || plan
+            .nodes
+            .iter()
+            .any(|node| node.name == buffer || node.view_name == buffer)
+    {
+        buffer.push('_');
+    }
     for node in &plan.nodes {
         match &node.kind {
+            Kind::Record(fields) if node.tuple => {
+                documentation::write(&mut output, &node.docs, "")?;
+                tuple(&mut output, plan, fields, &node.name, &buffer)?;
+            }
             Kind::Record(fields) => {
                 documentation::write(&mut output, &node.docs, "")?;
                 writeln!(
@@ -83,15 +96,6 @@ pub fn generate(
             _ => {}
         }
     }
-    let mut buffer = String::from("B");
-    while plan.exports.contains_key(&buffer)
-        || plan
-            .nodes
-            .iter()
-            .any(|node| node.name == buffer || node.view_name == buffer)
-    {
-        buffer.push('_');
-    }
     for (name, id) in &plan.exports {
         let declared = matches!(plan.nodes[*id].kind, Kind::Record(_) | Kind::Enum(_));
         if !declared || *name != plan.nodes[*id].name {
@@ -101,11 +105,13 @@ pub fn generate(
                 ty(plan, *id)
             )?;
             if declared {
-                writeln!(
-                    output,
-                    "pub use {}Input as {name}Input;",
-                    plan.nodes[*id].name
-                )?;
+                if !plan.nodes[*id].tuple {
+                    writeln!(
+                        output,
+                        "pub use {}Input as {name}Input;",
+                        plan.nodes[*id].name
+                    )?;
+                }
                 writeln!(
                     output,
                     "pub type {name}View<{buffer}> = {}View<{buffer}>;",
@@ -121,6 +127,33 @@ pub fn generate(
         }
     }
     Ok(output)
+}
+
+fn tuple(
+    output: &mut String,
+    plan: &TypeGraph,
+    fields: &[Field],
+    name: &str,
+    buffer: &str,
+) -> Result<(), GenerateError> {
+    if fields.len() > 12 {
+        return Err(GenerateError(format!(
+            "Rust tuples support at most twelve elements: {name} has {}",
+            fields.len()
+        )));
+    }
+    let trailing_comma = if fields.len() == 1 { "," } else { "" };
+    let fields = fields
+        .iter()
+        .map(|field| ty(plan, field.ty))
+        .collect::<Vec<_>>()
+        .join(", ");
+    writeln!(output, "pub type {name} = ({fields}{trailing_comma});")?;
+    writeln!(
+        output,
+        "pub type {name}View<{buffer}> = ::intrlay::ValueView<{name}, {buffer}>;\n",
+    )?;
+    Ok(())
 }
 
 fn enum_variant(

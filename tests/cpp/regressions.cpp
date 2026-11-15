@@ -15,6 +15,10 @@
 
 template<class V> concept CanSetValue = requires (V value) { value.set_value(std::uint32_t{1}); };
 template<class V> concept CanReadValue = requires (V value) { value.value(); };
+template<class View, class Source>
+concept CanCreateFrom = requires (const Source& value) { View::create(value); };
+template<class View, class Source>
+concept CanReplaceFrom = requires (View view, const Source& value) { view.replace(value); };
 
 int main() {
     using namespace intrlay_generated::alpha;
@@ -88,8 +92,62 @@ int main() {
     three.set(1, 20.0f);
     assert(arrays.view_unchecked().three().get(1) == 20);
 
-    // Native C arrays and a variant payload with its own member named value.
+    // Tuples and explicit shared owners preserve independent wire values.
     namespace codecs = intrlay_generated::codecs;
+    const auto shared = std::make_shared<std::uint32_t>(42);
+    const codec_fixture::TupleOwners owners{
+        {11, "tuple"}, {{53}, std::tuple{std::string("nested"), true}}, {}, shared, shared,
+        std::make_shared<std::vector<std::uint32_t>>(std::initializer_list<std::uint32_t>{3, 5, 8})};
+    auto owned = codecs::TupleOwnersView::create(owners);
+    auto owned_view = codecs::TupleOwnersView::from_bytes(owned.bytes());
+    assert(owned_view && owned_view->pair().field_1() == "tuple");
+    assert(owned_view->nested().field_0().field_0() == 53);
+    assert(owned_view->values().size() == 3);
+    assert(shared.use_count() == 3);
+    owned_view->set_first(71u);
+    assert(owned_view->first() == 71 && owned_view->second() == 42 && *shared == 42);
+    auto tuple_root = codecs::TupleRootView::create(std::tuple{std::uint32_t(17), std::string_view("root")});
+    assert(tuple_root.view_unchecked().field_0() == 17);
+    static_assert(!intrlay::detail::native_layout<codecs::TupleRootView::Metadata, std::tuple<std::uint32_t, std::string>>);
+
+    // Tuple sources require exact arity at every depth, including zero fields.
+    using BorrowedPair = std::tuple<std::uint32_t, std::string_view>;
+    using ShortPair = std::tuple<std::uint32_t>;
+    using LongPair = std::tuple<std::uint32_t, std::string_view, bool>;
+    static_assert(CanCreateFrom<codecs::TupleRootView, BorrowedPair>);
+    static_assert(!CanCreateFrom<codecs::TupleRootView, ShortPair>);
+    static_assert(!CanCreateFrom<codecs::TupleRootView, LongPair>);
+    using EmptyTupleView = decltype(owned_view->empty());
+    static_assert(CanCreateFrom<EmptyTupleView, std::tuple<>>);
+    static_assert(!CanCreateFrom<EmptyTupleView, ShortPair>);
+    using NestedTupleView = decltype(owned_view->nested());
+    using NestedSource = std::tuple<ShortPair, std::optional<std::tuple<std::string_view, bool>>>;
+    using ExtraInnerField = std::tuple<std::tuple<std::uint32_t, bool>,
+        std::optional<std::tuple<std::string_view, bool>>>;
+    using ExtraOptionalField = std::tuple<ShortPair,
+        std::optional<std::tuple<std::string_view, bool, bool>>>;
+    static_assert(CanCreateFrom<NestedTupleView, NestedSource>);
+    static_assert(!CanCreateFrom<NestedTupleView, ExtraInnerField>);
+    static_assert(!CanCreateFrom<NestedTupleView, ExtraOptionalField>);
+    using FixedTupleView = decltype(owned_view->nested().field_0());
+    static_assert(CanReplaceFrom<FixedTupleView, ShortPair>);
+    static_assert(!CanReplaceFrom<FixedTupleView, std::tuple<std::uint32_t, bool>>);
+    static_assert(!intrlay::SetSourceFor<std::tuple<std::uint32_t, bool>, FixedTupleView::Metadata>);
+    owned_view->nested().field_0().replace(ShortPair{73});
+    assert(owned_view->nested().field_0().field_0() == 73);
+
+    // Synthetic variant fields forward a complete payload, not a one-field tuple.
+    using TuplePayload = intrlay::Variant<0, intrlay::Field<"value", 4,
+        codecs::TupleRootView::Metadata, intrlay::AlternativeValue{}>>;
+    static_assert(intrlay::EncodeSourceFor<BorrowedPair, TuplePayload>);
+    static_assert(!intrlay::EncodeSourceFor<LongPair, TuplePayload>);
+
+    // Named inputs may still carry unrelated fields beyond the schema.
+    struct NamedSource { std::uint32_t value; std::string_view label; bool extra; };
+    auto named = codecs::ValueRecordView::create(NamedSource{19, "structural", true});
+    assert(named.view_unchecked().value() == 19 && named.view_unchecked().label() == "structural");
+
+    // Native C arrays and a variant payload with its own member named value.
     auto native = codecs::CodecCasesView::create(
         codec_fixture::CodecCases{{1, 2, 3}, codec_fixture::ValueRecord{7, "payload"}});
     auto generated = codecs::CodecCasesView::create(

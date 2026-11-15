@@ -216,6 +216,9 @@ fn fields_metadata(
             reference(plan, field.ty, None)
         )?;
         let source = source_member(field);
+        if let Some(index) = field.position {
+            write!(output, "::intrlay::TupleMember<{index}, ")?;
+        }
         if synthetic_payload {
             write!(output, "::intrlay::AlternativeValue{{}}")?;
         } else if field.name != source {
@@ -226,6 +229,9 @@ fn fields_metadata(
             )?;
         } else {
             write!(output, "{members}::{source}")?;
+        }
+        if field.position.is_some() {
+            write!(output, ">{{}}")?;
         }
         write!(output, ">")?;
     }

@@ -74,6 +74,10 @@ internal sealed partial class Emitter(Schema schema)
     {
         var node = Node(id);
         if (node.Scalar) return Scalar(node.Kind);
+        if (node.Tuple)
+        {
+            return TupleType(node, field => Input(field.Type, qualified));
+        }
         return node.Kind switch
         {
             "Unit" => "global::System.ValueTuple",
@@ -85,6 +89,24 @@ internal sealed partial class Emitter(Schema schema)
             "Optional" => OptionalType(node.Value, input: true, readOnly: false, qualified),
             _ => throw new InvalidOperationException("Unknown wire kind " + node.Kind),
         };
+    }
+
+    private static string TupleType(Node node, Func<Field, string> type)
+    {
+        if (node.Fields.Count == 0) return "global::System.ValueTuple";
+        if (node.Fields.Count == 1) return $"global::System.ValueTuple<{type(node.Fields[0])}>";
+        return "(" + string.Join(", ", node.Fields.Select(field => $"{type(field)} @{field.Name}")) + ")";
+    }
+
+    private static string RecordMember(Node node, Field field, string value) =>
+        $"{value}.@{(node.Tuple && node.Fields.Count == 1 ? "Item1" : field.Name)}";
+
+    private string ConstructRecord(Node node, string arguments)
+    {
+        if (!node.Tuple) return $"new {Input(node.Id)}({arguments})";
+        if (node.Fields.Count == 0) return "default(global::System.ValueTuple)";
+        if (node.Fields.Count == 1) return $"new {Input(node.Id)}({arguments})";
+        return $"({arguments})";
     }
 
     private string Output(int id, bool readOnly)

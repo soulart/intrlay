@@ -14,13 +14,13 @@ help: the trait `StableBytes` is not implemented for `Unstable`
    = help: the following other types implement trait `StableBytes`:
              &T
              &mut T
-             Arc<[u8]>
              Box<[u8]>
              OwnedBuffer
-             Rc<[u8]>
              Vec<u8>
              [u8; N]
              [u8]
+             std::rc::Rc<[u8]>
+             std::sync::Arc<[u8]>
 note: required by a bound in `PacketView::<__IntrlayBuffer>::from_bytes`
   --> tests/ui/fail/unstable_view_storage.rs:3:10
    |

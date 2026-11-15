@@ -196,6 +196,15 @@ impl<'a, 'tu> Extractor<'a, 'tu> {
             Type::Sequence(element) => format!("SequenceOf{}", self.type_name(element)),
             Type::Optional(element) => format!("Optional{}", self.type_name(element)),
             Type::Boxed(element) => format!("BoxOf{}", self.type_name(element)),
+            Type::Tuple(fields) => format!(
+                "Tuple{}Of{}",
+                fields.len(),
+                fields
+                    .iter()
+                    .map(|field| self.type_name(field))
+                    .collect::<Vec<_>>()
+                    .join("And")
+            ),
         }
     }
 
@@ -430,6 +439,18 @@ impl<'a, 'tu> Extractor<'a, 'tu> {
                 Type::String
             }
             "monostate" => Type::Unit,
+            "tuple" => Type::Tuple(
+                arguments
+                    .into_iter()
+                    .enumerate()
+                    .map(|(index, argument)| {
+                        self.ty(
+                            argument.ok_or_else(|| unsupported(native))?,
+                            &format!("::std::tuple_element_t<{index}, {expression}>"),
+                        )
+                    })
+                    .collect::<Result<Vec<_>, _>>()?,
+            ),
             "array" => {
                 // libclang exposes type arguments but not integral class-template arguments.
                 // Canonical spelling contains the compiler-evaluated, concrete array count.

@@ -140,6 +140,17 @@ fn input(
         return Ok(());
     }
     match &node.kind {
+        Kind::Record(fields) if node.tuple => {
+            writeln!(
+                output,
+                "export type {name} = readonly [{}];",
+                fields
+                    .iter()
+                    .map(|field| input_type(plan, field.ty))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            )?;
+        }
         Kind::Record(fields) => {
             writeln!(output, "export interface {name} {{")?;
             for field in fields {
@@ -972,6 +983,10 @@ fn compute_size(plan: &TypeGraph, id: Id) -> String {
 fn input_member(plan: &TypeGraph, node: &Node, field: &Field) -> String {
     if plan.folded_node(node).is_some() {
         "value".into()
+    } else if node.tuple
+        && let Some(index) = field.position
+    {
+        format!("value[{index}]")
     } else {
         format!("value.{}", field.name)
     }

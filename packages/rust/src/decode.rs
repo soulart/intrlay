@@ -268,6 +268,56 @@ impl<'a> Decoder<'a> {
         array.initialized = 0;
         Ok(result)
     }
+
+    /// Initializes a newly allocated slice, dropping its initialized prefix on
+    /// failure or unwinding. On success the caller takes ownership of all values.
+    pub(crate) fn decode_elements<C: Intrlay>(
+        &mut self,
+        offset: usize,
+        destination: &mut [MaybeUninit<C::Value>],
+    ) -> Result<(), DecodeError> {
+        if self.decode_fixed_elements::<C>(offset, destination)? {
+            return Ok(());
+        }
+        self.array_region(offset, destination.len(), C::LAYOUT.size())?;
+        let mut prefix = DecodedPrefix {
+            values: destination,
+            initialized: 0,
+        };
+        for index in 0..prefix.values.len() {
+            prefix.values[index].write(self.decode::<C>(offset + index * C::LAYOUT.size())?);
+            prefix.initialized += 1;
+        }
+        prefix.initialized = 0;
+        Ok(())
+    }
+}
+
+/// Initializes owned slice storage from an already valid sequence region.
+///
+/// # Safety
+/// Every element and descendant at `offset` must be a valid encoding of `C`.
+pub(crate) unsafe fn decode_elements_unchecked<C: Intrlay>(
+    bytes: &[u8],
+    offset: usize,
+    destination: &mut [MaybeUninit<C::Value>],
+) {
+    if C::NATIVE_LAYOUT {
+        // SAFETY: The caller guarantees valid native elements throughout the region.
+        unsafe { copy_native_elements_unchecked::<C>(bytes, offset, destination) };
+    } else {
+        let mut prefix = DecodedPrefix {
+            values: destination,
+            initialized: 0,
+        };
+        for index in 0..prefix.values.len() {
+            // SAFETY: Each element belongs to the valid region guaranteed by the caller.
+            prefix.values[index]
+                .write(unsafe { C::decode_unchecked(bytes, offset + index * C::LAYOUT.size()) });
+            prefix.initialized += 1;
+        }
+        prefix.initialized = 0;
+    }
 }
 
 /// Copies validated native elements into exclusively borrowed uninitialized slots.

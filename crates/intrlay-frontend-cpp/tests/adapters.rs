@@ -20,6 +20,57 @@ fn options() -> Options {
 }
 
 #[test]
+fn tuple_fields_and_explicit_shared_owners_preserve_tree_shapes() -> Result<(), Box<dyn Error>> {
+    let schema = extract(
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/codec_cases.hpp"),
+        &options(),
+    )?;
+    assert_eq!(
+        schema.exports["TupleRoot"],
+        Type::Tuple(vec![Type::Scalar(Scalar::U32), Type::String])
+    );
+    let DefinitionKind::Record(fields) = &common::definition(&schema, "TupleOwners").kind else {
+        return Err("expected owner record".into());
+    };
+    assert_eq!(fields[0].ty, schema.exports["TupleRoot"]);
+    assert_eq!(fields[2].ty, Type::Tuple(vec![]));
+    let boxed = Type::Boxed(Box::new(Type::Scalar(Scalar::U32)));
+    assert_eq!(fields[3].ty, boxed);
+    assert_eq!(fields[4].ty, boxed);
+    assert_eq!(
+        fields[5].ty,
+        Type::Boxed(Box::new(Type::Sequence(Box::new(Type::Scalar(
+            Scalar::U32
+        )))))
+    );
+    Ok(())
+}
+
+#[test]
+fn shared_ownership_requires_opt_in_and_array_pointers_keep_their_missing_length_error()
+-> Result<(), Box<dyn Error>> {
+    let directory = tempfile::tempdir()?;
+    let path = directory.path().join("schema.hpp");
+    for (header, pointer) in [
+        ("memory", "std::shared_ptr<int>"),
+        ("intrlay/adapters/shared_ptr.hpp", "std::shared_ptr<int[]>"),
+        ("intrlay/adapters/shared_ptr.hpp", "std::weak_ptr<int>"),
+    ] {
+        std::fs::write(
+            &path,
+            format!(
+                "#include <intrlay/annotations.hpp>\n#include <{header}>\nusing Root INTRLAY() = {pointer};"
+            ),
+        )?;
+        assert!(
+            extract(&path, &options()).is_err(),
+            "unsupported owner was accepted: {pointer}"
+        );
+    }
+    Ok(())
+}
+
+#[test]
 fn adapters_resolve_recursively_and_preserve_schema_metadata() -> Result<(), Box<dyn Error>> {
     let schema = extract(
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/adapters.hpp"),

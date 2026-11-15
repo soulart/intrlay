@@ -97,6 +97,8 @@ impl Options {
 
 #[derive(Clone)]
 pub struct Field {
+    /// Positional member index for a tuple or tuple-struct field.
+    pub position: Option<usize>,
     pub source_name: String,
     /// Original declaration path, independent of renames and flattened API names.
     pub source_path: String,
@@ -164,6 +166,8 @@ pub struct Node {
     pub view_name: String,
     pub docs: String,
     pub transparent: bool,
+    /// Anonymous positional record, with native tuple inputs where supported.
+    pub tuple: bool,
     /// Declared enum shape; flattening may remove every projected payload field.
     value_enum: bool,
     pub kind: Kind,
@@ -845,6 +849,7 @@ impl<'a> Builder<'a> {
             docs: String::new(),
             kind: Kind::Unit,
             transparent: false,
+            tuple: matches!(&ty, Type::Tuple(_)),
             value_enum: false,
             layout: self.layouts.of(&ty)?,
             buffer_alignment: self.layouts.buffer_alignment(&ty)?,
@@ -883,6 +888,14 @@ impl<'a> Builder<'a> {
                 offset: self.layouts.of(value)?.alignment(),
             },
             Type::Boxed(value) => Kind::Boxed(self.index(value)?),
+            Type::Tuple(elements) => {
+                let fields = elements
+                    .iter()
+                    .enumerate()
+                    .map(|(index, ty)| intrlay_schema::Field::new(index.to_string(), ty.clone()))
+                    .collect::<Vec<_>>();
+                Kind::Record(self.fields(&fields, 1, 0, &self.type_label(ty))?)
+            }
             Type::Named(identity) => {
                 return Err(GenerateError(format!("missing definition: {identity}")));
             }
@@ -909,6 +922,15 @@ impl<'a> Builder<'a> {
             Type::Sequence(element) => format!("SequenceOf{}", self.type_label(element)),
             Type::Optional(value) => format!("Optional{}", self.type_label(value)),
             Type::Boxed(value) => format!("Boxed{}", self.type_label(value)),
+            Type::Tuple(fields) => format!(
+                "Tuple{}Of{}",
+                fields.len(),
+                fields
+                    .iter()
+                    .map(|field| self.type_label(field))
+                    .collect::<Vec<_>>()
+                    .join("And")
+            ),
         }
     }
 
@@ -958,6 +980,7 @@ impl<'a> Builder<'a> {
             });
             let name = identifier(&name)?;
             result.push(Field {
+                position: field.name.parse().ok(),
                 source_name,
                 source_path: format!("{source}.{}", field.name),
                 flattened: false,

@@ -16,6 +16,10 @@ pub fn native_layout(plan: &TypeGraph, id: Id) -> bool {
         if !visited.insert(id) {
             continue;
         }
+        // ValueTuple does not use our explicit record field layout.
+        if plan.nodes[id].tuple {
+            return false;
+        }
         match &plan.nodes[id].kind {
             Kind::Scalar(scalar) if *scalar != intrlay_schema::Scalar::Bool => {}
             Kind::Record(fields) if !fields.is_empty() => {

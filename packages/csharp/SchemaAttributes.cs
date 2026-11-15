@@ -50,6 +50,8 @@ public sealed class WireTypeAttribute(
     public bool Encode { get; set; }
     public bool Native { get; set; }
     public bool NativeLayout { get; set; }
+    /// <summary>A positional record whose canonical input is System.ValueTuple.</summary>
+    public bool Tuple { get; set; }
     /// <summary>The resolved encoder writes every byte, including all alignment gaps.</summary>
     public bool FullyWritten { get; set; }
     public bool Zeroable { get; set; }

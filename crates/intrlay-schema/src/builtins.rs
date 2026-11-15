@@ -41,6 +41,16 @@ impl<T: Describe> Describe for Box<T> {
         Type::Boxed(Box::new(T::describe(registry)))
     }
 }
+impl<T: Describe> Describe for Box<[T]> {
+    fn describe(registry: &mut Registry) -> Type {
+        <Vec<T>>::describe(registry)
+    }
+}
+impl Describe for Box<str> {
+    fn describe(registry: &mut Registry) -> Type {
+        String::describe(registry)
+    }
+}
 impl<T: Describe> Describe for Option<T> {
     fn describe(registry: &mut Registry) -> Type {
         Type::Optional(Box::new(T::describe(registry)))
@@ -54,3 +64,17 @@ impl<T: Describe, const N: usize> Describe for [T; N] {
         }
     }
 }
+
+macro_rules! tuples {
+    ($first:ident $(, $rest:ident)*) => {
+        impl<$first: Describe, $($rest: Describe),*> Describe for ($first, $($rest,)*) {
+            fn describe(registry: &mut Registry) -> Type {
+                Type::Tuple(vec![$first::describe(registry), $($rest::describe(registry)),*])
+            }
+        }
+        tuples!($($rest),*);
+    };
+    () => {};
+}
+
+tuples!(A, B, C, D, E, F, G, H, I, J, K, L);

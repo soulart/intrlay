@@ -10,6 +10,21 @@ from bindings import RenamedListView, ProjectionSetView, WrappedScalarsView, Cac
 from intrlay import Some, zeroed, FloatView
 from bindings import ZeroedArraysInput, ZeroedArraysView
 from bindings import NumericItemsView
+from bindings import ContainersView, TupleRootView, TupleTreeView
+
+containers = ContainersView.create(dict(
+    label="containers 🦀", items=[(11, "first"), (22, "second")], pair=(7, 91),
+    nested=((53,), ("nested", True)), wide=(1, 2, 3, 4, 5, 6, 7, 8, 9),
+    first=42, second=42, samples=array("I", [3, 5, 8]), note="shared"))
+assert bytes(containers.storage.bytes) == Path("target/compositions/containers.bin").read_bytes()
+assert containers.items[1].field_1 == "second"
+assert containers.nested.field_0.field_0 == 53
+assert containers.wide.field_8 == 9
+containers.pair.field_0 = 8
+assert containers.pair.field_0 == 8
+assert TupleRootView.create((17, "root")).field_1 == "root"
+tuple_tree = TupleTreeView.create(dict(value=(1,), children=([dict(value=(2,), children=([],))],)))
+assert tuple_tree.children.field_0[0].value.field_0 == 2
 
 zero_input: ZeroedArraysInput = dict(id=73, points=zeroed(3), flags=zeroed(4), matrix=zeroed(),
                                     present=zeroed(), nested=[zeroed(2), zeroed(0)], empty=zeroed())

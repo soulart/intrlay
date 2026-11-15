@@ -4,6 +4,10 @@ Install `intrlay` with `python -m pip install intrlay`. Python 3.12 or later is
 required. Generate bindings with `--language python` and import them as an
 ordinary Python module.
 
+By default, tuple schemas use Python tuple inputs, such as `tuple[int, str]` with the value
+`(42, "Alice")`. Their views expose `field_0`, `field_1`, and so on without
+constructing another tuple on access. A single-element input uses `(42,)`.
+
 ## Construct and read a drawing
 
 Generate the [tutorial schema](../tutorial.mdx#1-define-the-message) with

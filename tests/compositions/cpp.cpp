@@ -75,6 +75,41 @@ void value_enum_regressions() {
 int main() {
     value_enum_regressions();
     using namespace composition;
+    auto containers = ContainersInput{
+        std::string_view("containers \xf0\x9f\xa6\x80"),
+        std::array{std::tuple{11u, std::string_view("first")}, std::tuple{22u, std::string_view("second")}},
+        std::tuple{std::uint8_t{7}, std::uint64_t{91}},
+        std::tuple{std::tuple{53u}, std::optional{std::tuple{std::string_view("nested"), true}}},
+        std::tuple{1u, 2u, 3u, 4u, 5u, 6u, 7u, 8u, 9u},
+        std::make_unique<std::uint32_t>(42), std::make_unique<std::uint32_t>(42),
+        std::array{3u, 5u, 8u}, std::string_view("shared"),
+    };
+    auto container_buffer = ContainersView::create(containers);
+    std::ifstream container_file("target/compositions/containers.bin", std::ios::binary);
+    std::vector<char> container_expected{std::istreambuf_iterator<char>(container_file), {}};
+    assert(container_expected.size() == container_buffer.bytes().size());
+    for (std::size_t i = 0; i < container_expected.size(); ++i)
+        assert(container_buffer.bytes()[i] == static_cast<std::byte>(container_expected[i]));
+    auto container_view = container_buffer.view_unchecked();
+    assert(container_view.items().get(1).field_1() == "second");
+    assert(container_view.nested().field_0().field_0() == 53);
+    assert(container_view.wide().field_8() == 9);
+    static_assert(std::same_as<TupleRootInput, std::tuple<std::uint32_t, std::string>>);
+    auto tuple_root = TupleRootView::create(std::tuple{17u, std::string_view("borrowed")});
+    assert(tuple_root.view_unchecked().field_1() == "borrowed");
+    using Pair = std::tuple<std::uint32_t, std::string_view>;
+    using Single = std::tuple<std::uint32_t>;
+    using TupleVariantSource = std::variant<std::tuple<Pair>, std::tuple<Single>>;
+    using ExtraVariantField = std::variant<std::tuple<Pair, bool>, std::tuple<Single>>;
+    static_assert(intrlay::EncodeSourceFor<TupleVariantSource, TupleChoiceView::Metadata>);
+    static_assert(!intrlay::EncodeSourceFor<ExtraVariantField, TupleChoiceView::Metadata>);
+    auto tuple_choice = TupleChoiceView::create(TupleVariantSource{std::in_place_index<0>, Pair{31, "variant"}});
+    assert(tuple_choice.view_unchecked().value_field_0()->field_1() == "variant");
+    TupleTreeInput<> tree{std::tuple{1u}, std::tuple{std::vector<TupleTreeInput<>>{
+        {std::tuple{2u}, std::tuple{std::vector<TupleTreeInput<>>{}}},
+    }}};
+    auto tree_buffer = TupleTreeView::create(tree);
+    assert(tree_buffer.view_unchecked().children().field_0().get(0).value().field_0() == 2);
     auto zero_input = ZeroedArraysInput{73u, intrlay::zeroed(3), intrlay::zeroed(4), intrlay::zeroed(),
         std::optional<intrlay::Zeroed>{intrlay::zeroed()},
         std::array{intrlay::zeroed(2), intrlay::zeroed(0)}, intrlay::zeroed()};

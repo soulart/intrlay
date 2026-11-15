@@ -7,6 +7,7 @@ internal sealed partial class Emitter
 {
     private void Native(Node node)
     {
+        if (node.Tuple) return;
         if (node.Kind == "Record")
         {
             NativeRecord(node.Name, node.Fields, node);

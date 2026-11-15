@@ -17,8 +17,10 @@ pub fn validate(generation: &GenerationPlan) -> Result<(), GenerateError> {
         if matches!(node.kind, Kind::Record(_) | Kind::Enum(_)) {
             declarations.input(node, &node.name)?;
             // Rust emits source declarations; derive supplies their input API.
-            declarations.declaration(&format!("{}Input", node.name), "encoding input")?;
-            shared::input_fields(plan, node, &[])?;
+            if !node.tuple {
+                declarations.declaration(&format!("{}Input", node.name), "encoding input")?;
+                shared::input_fields(plan, node, &[])?;
+            }
         }
         if let Kind::Record(fields) = &node.kind {
             derive_field_names(plan, fields)?;
@@ -48,7 +50,7 @@ pub fn validate(generation: &GenerationPlan) -> Result<(), GenerateError> {
         let declared = matches!(node.kind, Kind::Record(_) | Kind::Enum(_));
         if !declared || *alias != node.name {
             declarations.declaration(alias, "export input alias")?;
-            if declared {
+            if declared && !node.tuple {
                 declarations.declaration(&format!("{alias}Input"), "export input alias")?;
             }
         }
@@ -79,6 +81,10 @@ fn derive_field_names(plan: &TypeGraph, fields: &[Field]) -> Result<(), Generate
 }
 
 fn view_members(plan: &TypeGraph, id: Id) -> Result<(), GenerateError> {
+    if plan.nodes[id].tuple {
+        // Tuples use ValueView's const-index API, without named field methods.
+        return Ok(());
+    }
     let mut members = Scope::new(plan);
     // Derive supplies these methods with fixed names; runtime naming rules do
     // not rename them. Struct fields occupy a separate namespace from methods.

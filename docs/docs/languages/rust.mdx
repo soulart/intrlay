@@ -12,7 +12,7 @@ Use the Rust declarations from the [drawing tutorial](../tutorial.mdx#1-define-t
 `PointInput`, and `DrawingCommandInput` for borrowed encoding sources. No
 separate CLI step is needed to use those Rust APIs.
 
-The same derive supports tuples, newtypes, arrays, optional values, strings,
+The same derive supports tuple structs, newtypes, arrays, optional values, strings,
 sequences, and `Box` trees. `export_types!` is only needed when the CLI collects
 that library's schema for generation. Declare it once at the crate root; list
 export roots and concrete generic specializations as described in
@@ -20,6 +20,30 @@ export roots and concrete generic specializations as described in
 
 For a C++ schema, generate a Rust module with `--language rust`. Its native
 declarations use the same derive mechanism.
+
+## Tuples and owned slices
+
+Ordinary tuples of one through twelve elements implement `Intrlay` without a
+derive. Their fields use declaration order in the buffer, independently of Rust's
+native tuple layout. A tuple view uses compile-time field indices:
+
+```rust
+use intrlay::Intrlay;
+
+let mut bytes = intrlay::create_from::<(u32, String)>(&(42_u32, "Alice"))?;
+let mut view = <(u32, String)>::view_mut(bytes.as_mut(), 0)?;
+assert_eq!(view.field::<1>(), "Alice");
+view.field_mut::<0>().set(43);
+```
+
+An out-of-range field index is a compile error. Mutable fields borrow their parent
+view exclusively, just like fields of a derived struct.
+
+`Box<[C]>` uses the same sequence representation and borrowed inputs as `Vec<C>`;
+`Box<str>` uses the string representation and accepts `str` inputs. Neither adds
+another indirect header. Tuples, slices, and strings compose with arrays,
+optionals, boxes, and element adapters. Reference-counted owners require an
+explicit [value-copy adapter](../reference/library-adapters.mdx#reference-counted-owners).
 
 ## Construct and read a drawing
 

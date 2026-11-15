@@ -8,6 +8,12 @@ Install `Intrlay` with `dotnet add package Intrlay`. The package targets .NET 10
 and C# 14. It includes both the runtime and a Roslyn incremental
 source generator; no separate analyzer package is needed.
 
+Tuple schemas use `System.ValueTuple` inputs. For two or more fields the API uses
+C# tuple syntax, such as `(uint Field0, string Field1)`, which accepts `(42u, "Alice")`.
+A single field uses `ValueTuple<T>`, and an empty tuple uses `ValueTuple`.
+Tuple views retain field accessors into the buffer; they do not reinterpret the
+bytes as a native `ValueTuple`. Ordinary structs keep their generated Input types.
+
 ## Generation and compilation
 
 Generate the [tutorial schema](../tutorial.mdx#1-define-the-message) with

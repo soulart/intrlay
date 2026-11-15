@@ -1,9 +1,14 @@
-//! Optional integrations for source-language library types.
+//! Explicit integrations for native owners and source-language library types.
 //!
-//! Enable the matching Cargo feature and select a codec with `#[intrlay(with = ...)]`.
+//! Select a codec with `#[intrlay(with = ...)]`; external libraries also require
+//! their matching Cargo feature. [`Rc`] and [`Arc`] copy contents into independent
+//! wire occurrences, preserving tree semantics rather than shared identity.
 //! The original fields retain their library types. `smol_str` and `smallvec` retain the ordinary
 //! string and sequence representations; their native storage strategy is not
 //! part of the schema. `glam` exposes named fields and explicit aligned layouts.
+
+mod shared;
+pub use shared::{Arc, Rc};
 
 #[cfg(any(feature = "glam-0-33", feature = "glam-0-34"))]
 #[path = "glam/size.rs"]

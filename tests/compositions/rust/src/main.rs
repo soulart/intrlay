@@ -3,6 +3,19 @@ mod bindings;
 use bindings::*;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let container_bytes = std::fs::read("target/compositions/containers.bin")?;
+    let container = <Containers as intrlay::Intrlay>::decode(&container_bytes, 0)?;
+    assert_eq!(
+        intrlay::create::<Containers>(&container)?.as_ref(),
+        container_bytes
+    );
+    let view = ContainersView::from_bytes(container_bytes)?;
+    assert_eq!(view.items().get(1).ok_or("item")?.field::<1>(), "second");
+    assert_eq!(view.nested().field::<0>().field::<0>(), 53);
+    assert_eq!(view.wide().field::<8>(), 9);
+    let tuple = TupleRootView::create_from(&(17_u32, "borrowed"))?;
+    assert_eq!(tuple.field::<0>(), 17);
+    assert_eq!(tuple.field::<1>(), "borrowed");
     let nested = [
         intrlay::ZeroedSequence::new(2),
         intrlay::ZeroedSequence::new(0),

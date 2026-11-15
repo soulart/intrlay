@@ -6,6 +6,22 @@ import { runInNewContext } from "node:vm";
 import { NumericItemsView } from "../../target/compositions/bindings.js";
 import { EncodingBuffer } from "../../packages/typescript/dist/index.js";
 import { RenamedListView, ProjectionSetView, WrappedScalarsView, CachedChildrenView, OptionalRootView, CachedRootView } from "../../target/compositions/bindings.js";
+import { ContainersView, TupleRootView, TupleTreeView } from "../../target/compositions/bindings.js";
+
+const containers = ContainersView.create({
+    label: "containers 🦀", items: [[11, "first"], [22, "second"]], pair: [7, 91n],
+    nested: [[53], ["nested", true]], wide: [1, 2, 3, 4, 5, 6, 7, 8, 9],
+    first: 42, second: 42, samples: new Uint32Array([3, 5, 8]), note: "shared",
+});
+assert.deepEqual(containers.storage.bytes, new Uint8Array(readFileSync("target/compositions/containers.bin")));
+assert.equal(containers.items.get(1).field1, "second");
+assert.equal(containers.nested.field0.field0, 53);
+assert.equal(containers.wide.field8, 9);
+containers.pair.field0 = 8;
+assert.equal(containers.pair.field0, 8);
+assert.equal(TupleRootView.create([17, "root"]).field1, "root");
+const tupleTree = TupleTreeView.create({ value: [1], children: [[{ value: [2], children: [[]] }]] });
+assert.equal(tupleTree.children.field0.get(0).value.field0, 2);
 
 const zeroInput = { id: 73, points: zeroed(3), flags: zeroed(4), matrix: zeroed(), present: zeroed(), nested: [zeroed(2), zeroed(0)], empty: zeroed() };
 const zeroExpected = new Uint8Array(readFileSync("target/compositions/zeroed.bin"));

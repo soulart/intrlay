@@ -1,6 +1,7 @@
 #pragma once
 #include "collection_view.hpp"
 #include "validation.hpp"
+#include <tuple>
 
 // C++20 cannot form a member expression from a string. This small accessor is
 // the only token-level operation; field names, layouts, and traversal are types.
@@ -29,6 +30,11 @@ concept GeneratedInput = requires {
     typename T::intrlay_input;
     requires std::same_as<typename T::intrlay_input, GeneratedInputTag>;
 };
+
+template<class T>
+inline constexpr bool is_tuple = false;
+template<class... T>
+inline constexpr bool is_tuple<std::tuple<T...>> = true;
 } // namespace detail
 
 /// Reading a member does not imply that it occupies storage in its source object.
@@ -73,6 +79,25 @@ struct MappedMember {
     constexpr auto operator()(const T& value) const noexcept(noexcept(Source(value))) -> decltype(Source(value)) {
         return Source(value);
     }
+};
+
+/// Positional sources use std::get; named sources keep their declared members.
+/// Tuple objects do not participate in native-copy proofs: their ABI may reorder fields.
+template<std::size_t Index, auto Named>
+struct TupleMember {
+    template<class T>
+        requires (detail::is_tuple<T> && Index < std::tuple_size_v<T>)
+    constexpr auto operator()(const T& value) const noexcept -> decltype(std::get<Index>(value)) {
+        return std::get<Index>(value);
+    }
+    template<class T>
+        requires (!detail::is_tuple<T> && requires(const T& value) { Named(value); })
+    constexpr auto operator()(const T& value) const noexcept(noexcept(Named(value))) -> decltype(Named(value)) {
+        return Named(value);
+    }
+    template<class T>
+        requires (!detail::is_tuple<T> && requires { Named.template offset<T>(); })
+    consteval std::size_t offset() const { return Named.template offset<T>(); }
 };
 
 /// An alternative is the payload itself, including records with a `value` field.
@@ -220,8 +245,29 @@ template<class Visitor, class... Fields>
 concept FieldVisitorFor = (requires(Visitor& visitor) { visitor.template operator()<Fields>(); } && ...);
 
 template<class... Fields>
-struct FieldList : RecordCodec<Fields...> {
+struct FieldList : RecordCodec<Fields...>, EncodingCodec<FieldList<Fields...>> {
     static constexpr std::size_t field_count = sizeof...(Fields);
+    static constexpr bool is_alternative_value = field_count == 1 && (Fields::is_alternative_value && ...);
+    template<class T, class... Seen>
+    static consteval bool accepts_source() {
+        // Positional inputs must match the whole tuple, including an empty one.
+        // A C++ variant's synthetic field forwards its entire payload instead.
+        if constexpr (detail::is_tuple<T> && !is_alternative_value) {
+            if constexpr (std::tuple_size_v<T> != field_count) return false;
+        }
+        return RecordCodec<Fields...>::template accepts_source<T, Seen...>();
+    }
+    using EncodingCodec<FieldList>::measure;
+    using EncodingCodec<FieldList>::write;
+    template<EncodeSourceFor<FieldList> T>
+    static void measure_source(const T& value, detail::Cursor& cursor) {
+        RecordCodec<Fields...>::measure_source(value, cursor);
+    }
+    template<EncodeSourceFor<FieldList> T>
+    static void write_source(std::span<std::byte> bytes, std::size_t offset, const T& INTRLAY_RESTRICT value, detail::Cursor& cursor)
+        noexcept(noexcept(RecordCodec<Fields...>::write_source(bytes, offset, value, cursor))) {
+        RecordCodec<Fields...>::write_source(bytes, offset, value, cursor);
+    }
     // Defer child metadata until use: descriptors may still be forward-declared.
     static consteval bool all_bits_valid() { return (Fields::Type::all_bits_valid() && ...); }
     template<std::size_t Index>
@@ -290,8 +336,7 @@ struct Record : FieldList<Fields...>, BorrowedView<View>, EncodingCodec<Record<V
 };
 
 template<std::uint32_t Tag, class... Fields>
-struct Variant : VariantCodec<Tag, FieldList<Fields...>,
-    !(sizeof...(Fields) == 1 && (Fields::is_alternative_value && ...))> {};
+struct Variant : VariantCodec<Tag, FieldList<Fields...>, !FieldList<Fields...>::is_alternative_value> {};
 
 /// Plain enums retain the schema's header size, which can exceed the u32 tag.
 template<class T, std::size_t Size, std::uint32_t... Tags>
