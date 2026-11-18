@@ -330,16 +330,7 @@ fn measure(
             }
         }
         Kind::Enum(variants) => {
-            for (index, variant) in variants
-                .iter()
-                .filter(|variant| {
-                    variant
-                        .fields
-                        .iter()
-                        .any(|field| plan.has_payload(field.ty))
-                })
-                .enumerate()
-            {
+            for (index, variant) in plan.measured_variants(variants).enumerate() {
                 let branch = if index == 0 { "if" } else { "elif" };
                 writeln!(
                     output,

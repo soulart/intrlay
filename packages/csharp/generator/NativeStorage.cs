@@ -379,9 +379,13 @@ internal sealed partial class Emitter
                 else
                 {
                     Line($"{storage}.{part.Slot} = {value}.HasValue;");
-                    Open($"if ({value}.HasValue)");
-                    NativeWrite(part.Child!, value + "!.Value", storage, locals);
-                    Close();
+                    // Zero-sized payloads carry only the optional presence bit.
+                    if (part.Child!.Node.Size != 0)
+                    {
+                        Open($"if ({value}.HasValue)");
+                        NativeWrite(part.Child, value + "!.Value", storage, locals);
+                        Close();
+                    }
                 }
                 break;
             case "Enum":

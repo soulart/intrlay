@@ -208,10 +208,13 @@ internal sealed partial class Emitter
                 if (node.Kind == "Optional")
                 {
                     if (writing) Line("buffer[offset] = _hasValue ? (byte)1 : (byte)0;");
-                    Open("if (_hasValue)");
-                    if (writing) SourceWrite(child, "buffer", $"offset + {node.Argument}", "_value", source: true);
-                    else SourceMeasure(child, "_value", source: true);
-                    Close();
+                    if (writing || child.HasPayload)
+                    {
+                        Open("if (_hasValue)");
+                        if (writing) SourceWrite(child, "buffer", $"offset + {node.Argument}", "_value", source: true);
+                        else SourceMeasure(child, "_value", source: true);
+                        Close();
+                    }
                 }
                 else if (node.Kind == "Boxed")
                 {

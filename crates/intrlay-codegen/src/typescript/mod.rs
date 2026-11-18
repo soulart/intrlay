@@ -231,7 +231,7 @@ fn measure(
         }
         Kind::Enum(variants) => {
             writeln!(output, "    switch (value.kind) {{")?;
-            for variant in variants {
+            for variant in plan.measured_variants(variants) {
                 writeln!(
                     output,
                     "        case {}.{}:",

@@ -4,7 +4,7 @@ use std::collections::BTreeSet;
 
 use intrlay_schema::Scalar;
 
-use super::{Id, Kind, TypeGraph, ViewPlan};
+use super::{Id, Kind, TypeGraph, Variant, ViewPlan};
 use crate::api::{Accessor, CollectionAccessors, IndexedAccessors};
 
 pub struct EncodingPlan {
@@ -88,6 +88,20 @@ impl EncodingPlan {
 }
 
 impl TypeGraph {
+    /// The union's inline storage is already reserved by its owner. Only
+    /// variants with out-of-line payloads need a measurement branch.
+    pub fn measured_variants<'a>(
+        &'a self,
+        variants: &'a [Variant],
+    ) -> impl Iterator<Item = &'a Variant> {
+        variants.iter().filter(|variant| {
+            variant
+                .fields
+                .iter()
+                .any(|field| self.has_payload(field.ty))
+        })
+    }
+
     pub fn writer_parameters(&self, id: Id) -> WriterParameters {
         let node = &self.nodes[id];
         if let Some(numeric) = node.numeric_input {

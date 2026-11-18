@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:intrlay/intrlay.dart' as intrlay;
 import '../../target/edge-cases/bindings.dart' as bindings;
 import '../../target/edge-cases/scalar.dart' as scalar;
 
@@ -30,5 +31,22 @@ void main() {
   check(bindings.NestedView(File('target/edge-cases/absent-1.bin').readAsBytesSync()).child!.value == null);
   check(bindings.NestedView(File('target/edge-cases/absent-2.bin').readAsBytesSync()).child!.value!.value == null);
   check(scalar.IntrlayU32View.create(123).value == 123);
+
+  const choices = <bindings.ChoiceInput>[
+    bindings.ChoiceValueInput(child: bindings.ZChildInput(value: 17)),
+    bindings.ChoiceEmptyInput(),
+    bindings.ChoiceTextInput(text: 'payload 😀'),
+    bindings.ChoiceZeroLengthInput(values: intrlay.FixedArrayInput.from([])),
+    bindings.ChoiceOptionalTextInput(text: null),
+    bindings.ChoiceOptionalTextInput(text: 'optional'),
+    bindings.ChoiceUnitInput(value: null),
+    bindings.ChoiceUnitInput(value: bindings.Some(null)),
+  ];
+  for (var i = 0; i < choices.length; ++i) {
+    final bytes = bindings.ChoiceView.create(choices[i]).storage.bytes;
+    final expected = File('target/edge-cases/choice-$i.bin').readAsBytesSync();
+    check(bytes.length == expected.length);
+    for (var j = 0; j < bytes.length; ++j) check(bytes[j] == expected[j]);
+  }
   print('Dart boundary values and composed layouts passed');
 }

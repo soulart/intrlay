@@ -404,6 +404,20 @@ fn check_csharp_storage(workspace: &Workspace) -> Result<()> {
 }
 
 fn check_expanded_source(workspace: &Workspace) -> Result<()> {
+    let empty_branch =
+        Regex::new(r"\b(?:if\s*\([^\n]*\)\s*\{\s*\}|case [^\n]+:\s*\{\s*break;\s*\})")?;
+    for directory in ["edge-cases", "compositions"] {
+        for path in sources(
+            &workspace.path(format!("target/{directory}/expanded")),
+            &["**/*.cs"],
+        )? {
+            ensure!(
+                !empty_branch.is_match(&fs::read_to_string(&path)?),
+                "empty generated branch in {}",
+                path.display()
+            );
+        }
+    }
     for path in sources(&workspace.path("target/edge-cases/expanded"), &["**/*.cs"])? {
         for line in fs::read_to_string(&path)?
             .trim_start_matches('\u{feff}')

@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.8]
+
+- TypeScript and Dart now generate union size calculations only for variants
+  that can reserve additional buffer space.
+- C# groups fixed-size variants in generated size calculations and skips empty
+  branches when measuring fixed-size optional inputs or storing zero-sized
+  optional payloads in a union.
+
 ## [0.1.7]
 
 - Add child-view accessor configuration through Rust `view(...)` and C++

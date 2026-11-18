@@ -35,6 +35,19 @@ Check(!new NestedView(Read("absent-1")).Child.Value.HasValue);
 Check(!new NestedView(Read("absent-2")).Child.Value.Value.HasValue);
 Check(EdgeCases.Scalar.IntrlayU32View.Create(123).Value == 123);
 
+var choices = new[] {
+    ChoiceInput.FromValue(new ZChildInput(17)),
+    ChoiceInput.FromEmpty(),
+    ChoiceInput.FromText("payload 😀"),
+    ChoiceInput.FromZeroLength(default),
+    ChoiceInput.FromOptionalText(null),
+    ChoiceInput.FromOptionalText("optional"),
+    ChoiceInput.FromUnit(null),
+    ChoiceInput.FromUnit(new ValueTuple()),
+};
+for (int i = 0; i < choices.Length; ++i)
+    Check(ChoiceView.Create(choices[i]).Bytes.Span.SequenceEqual(Read($"choice-{i}")));
+
 var intrinsics = new EdgeCases.Intrinsics.IntrinsicPropertiesInput(1, 2, 3, 4);
 var intrinsicView = EdgeCases.Intrinsics.IntrinsicPropertiesView.Create(intrinsics);
 Check(intrinsicView.@__arglist == 1 && intrinsicView.@__makeref == 2);

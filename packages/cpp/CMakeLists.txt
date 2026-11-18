@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(intrlay VERSION 0.1.7
+project(intrlay VERSION 0.1.8
     HOMEPAGE_URL https://github.com/soulart/intrlay
     LANGUAGES CXX)
 

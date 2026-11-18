@@ -20,17 +20,26 @@ internal sealed partial class Emitter
                 break;
             case "Enum":
                 Open($"switch (value.{Name("tag")})");
+                var inlineTags = new List<uint>();
                 foreach (var variant in node.Variants)
                 {
+                    var fields = node.Fields.Where(field => field.Variant == variant.Tag && Node(field.Type).HasPayload).ToList();
+                    if (fields.Count == 0)
+                    {
+                        inlineTags.Add(variant.Tag);
+                        continue;
+                    }
                     Line($"case {variant.Tag}:");
                     Open("");
-                    var fields = node.Fields.Where(field => field.Variant == variant.Tag && Node(field.Type).HasPayload).ToList();
-                    if (fields.Count != 0) Line($"var payload = value.@{variant.Name};");
+                    Line($"var payload = value.@{variant.Name};");
                     foreach (var field in fields)
                         Line($"@{Node(field.Type).MeasureName}(payload.@{field.Name}, ref cursor);");
                     Line("break;");
                     Close();
                 }
+                // Inline-only variants still need to be accepted by tag validation.
+                foreach (var tag in inlineTags) Line($"case {tag}:");
+                if (inlineTags.Count != 0) Line("break;");
                 Line("default: throw new global::System.ArgumentException(\"Unknown enum tag.\", nameof(value));");
                 Close();
                 break;

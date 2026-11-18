@@ -297,7 +297,7 @@ fn measure(
             }
         }
         Kind::Enum(variants) => {
-            for variant in variants {
+            for variant in plan.measured_variants(variants) {
                 writeln!(
                     output,
                     "  if (value is {}) {{",

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { EdgeCasesView, NestedView, TextView } from "../../target/edge-cases/bindings.js";
+import { ChoiceView, EdgeCasesView, NestedView, TextView } from "../../target/edge-cases/bindings.js";
 import { IntrlayU32View } from "../../target/edge-cases/scalar.js";
 
 const read = name => new Uint8Array(readFileSync(new URL(`../../target/edge-cases/${name}.bin`, import.meta.url)));
@@ -30,4 +30,18 @@ assert.equal(new NestedView(read("absent-0")).child, null);
 assert.equal(new NestedView(read("absent-1")).child.value, null);
 assert.equal(new NestedView(read("absent-2")).child.value.value, null);
 assert.equal(IntrlayU32View.create(123).value, 123);
+
+const choices = [
+    { kind: 0 /* ChoiceKind.Value */, child: { value: 17 } },
+    { kind: 1 /* ChoiceKind.Empty */ },
+    { kind: 2 /* ChoiceKind.Text */, text: "payload 😀" },
+    { kind: 3 /* ChoiceKind.ZeroLength */, values: [] },
+    { kind: 4 /* ChoiceKind.OptionalText */, text: null },
+    { kind: 4 /* ChoiceKind.OptionalText */, text: "optional" },
+    { kind: 5 /* ChoiceKind.Unit */, value: null },
+    { kind: 5 /* ChoiceKind.Unit */, value: { value: null } },
+];
+for (let i = 0; i < choices.length; ++i) {
+    assert.deepEqual(ChoiceView.create(choices[i]).storage.bytes, read(`choice-${i}`));
+}
 console.log("TypeScript boundary values and composed layouts passed");

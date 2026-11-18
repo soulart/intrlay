@@ -1,10 +1,11 @@
 """Valid boundary values preserve their bytes and nested presence states."""
 from pathlib import Path
 import sys
+from intrlay import Some
 
 base = Path(__file__).resolve().parents[2] / 'target/edge-cases'
 sys.path.insert(0, str(base))
-from bindings import EdgeCasesView, NestedView, TextView
+from bindings import ChoiceKind, ChoiceView, EdgeCasesView, NestedView, TextView
 from scalar import IntrlayU32View
 
 values = ['', 'hello', '\uFEFF', '\uFEFFhello', '\uFEFF\uFEFFhello', 'a\uFEFFb', '한글😀']
@@ -27,4 +28,17 @@ assert NestedView((base / 'absent-0.bin').read_bytes()).child is None
 assert NestedView((base / 'absent-1.bin').read_bytes()).child.value is None
 assert NestedView((base / 'absent-2.bin').read_bytes()).child.value.value is None
 assert IntrlayU32View.create(123).value == 123
+
+choices = [
+    {'kind': ChoiceKind.Value, 'child': {'value': 17}},
+    {'kind': ChoiceKind.Empty},
+    {'kind': ChoiceKind.Text, 'text': 'payload 😀'},
+    {'kind': ChoiceKind.ZeroLength, 'values': []},
+    {'kind': ChoiceKind.OptionalText, 'text': None},
+    {'kind': ChoiceKind.OptionalText, 'text': 'optional'},
+    {'kind': ChoiceKind.Unit, 'value': None},
+    {'kind': ChoiceKind.Unit, 'value': Some(None)},
+]
+for i, choice in enumerate(choices):
+    assert bytes(ChoiceView.create(choice).storage.bytes) == (base / f'choice-{i}.bin').read_bytes()
 print('Python boundary values and composed layouts passed')

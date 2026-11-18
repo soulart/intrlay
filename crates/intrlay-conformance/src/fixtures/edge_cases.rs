@@ -88,6 +88,10 @@ struct ShadowRoot {
 enum Choice {
     Value { child: Option<ZChild> },
     Empty,
+    Text { text: String },
+    ZeroLength { values: [String; 0] },
+    OptionalText { text: Option<String> },
+    Unit { value: Option<()> },
 }
 
 #[derive(Intrlay)]
@@ -137,6 +141,35 @@ fn generate_edge_cases(fixtures: &mut Fixtures) -> Result<(), Box<dyn Error>> {
             }
         } else {
             assert!(source.contains("Unchecked indexed access"));
+        }
+        if matches!(language, Language::TypeScript | Language::Dart) {
+            let declaration = if language == Language::TypeScript {
+                "function _measureChoice("
+            } else {
+                "void _measureChoice("
+            };
+            let measure = source
+                .split_once(declaration)
+                .and_then(|(_, rest)| rest.split_once("\n}"))
+                .ok_or("missing Choice measurement function")?
+                .0;
+            // Unit, inline payloads, and zero-length dynamic arrays require no
+            // allocation. Keep only the two variants that can extend the buffer.
+            for (name, measured) in [
+                ("Value", false),
+                ("Empty", false),
+                ("Text", true),
+                ("ZeroLength", false),
+                ("OptionalText", true),
+                ("Unit", false),
+            ] {
+                let branch = if language == Language::TypeScript {
+                    format!("case ChoiceKind.{name}:")
+                } else {
+                    format!("value is Choice{name}Input")
+                };
+                assert_eq!(measure.contains(&branch), measured, "{language:?}: {name}");
+            }
         }
         fixtures.insert(directory.join(format!("bindings.{extension}")), source)?;
     }
@@ -230,6 +263,30 @@ fn write_values(fixtures: &mut Fixtures, directory: &Path) -> Result<(), Box<dyn
         fixtures.insert(
             directory.join(format!("absent-{index}.bin")),
             NestedView::create(&Nested { child })?.as_bytes(),
+        )?;
+    }
+    for (index, value) in [
+        Choice::Value {
+            child: Some(ZChild { value: 17 }),
+        },
+        Choice::Empty,
+        Choice::Text {
+            text: "payload 😀".into(),
+        },
+        Choice::ZeroLength { values: [] },
+        Choice::OptionalText { text: None },
+        Choice::OptionalText {
+            text: Some("optional".into()),
+        },
+        Choice::Unit { value: None },
+        Choice::Unit { value: Some(()) },
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        fixtures.insert(
+            directory.join(format!("choice-{index}.bin")),
+            ChoiceView::create(&value)?.as_bytes(),
         )?;
     }
     Ok(())
